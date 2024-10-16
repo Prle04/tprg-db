@@ -10,3 +10,4 @@ Br. | Student | Index
 2 | Anđela Bulatović | SV35/2023
 3 | Marko Milutin | SV40/2023
 4 | Luka Prlinčević | SV36/2023
+5 | Dejan Ostojić | SV3/2023
