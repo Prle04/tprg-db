@@ -3,7 +3,7 @@ package hash
 import (
 	"crypto/md5"
 	"time"
-	"tprgdb/serialization"
+	"tprgdb/components/serialization"
 )
 
 type HashWithSeed struct {
