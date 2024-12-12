@@ -1,10 +1,10 @@
 package bloomfilter
 
 import (
-	"errors"
-	"os"
+	"tprgdb/components/blockmanager"
 	"tprgdb/components/hash"
 	"tprgdb/components/serialization"
+	"errors"
 )
 
 // implements Serializable interface
@@ -58,7 +58,7 @@ func (bl *BloomFilter) calculateIndecies(hash uint64) (uint64, uint8) {
 	return elementIndex, elementBit
 }
 
-func (bl *BloomFilter) SerializeToFile(file os.File) error {
+func (bl *BloomFilter) SerializeToFile(file blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k
@@ -66,23 +66,23 @@ func (bl *BloomFilter) SerializeToFile(file os.File) error {
 	// nofEl * 1B - data
 
 	// Version
-	_, err := file.Write(serialization.UInt8ToBytes(CURRENT_VERSION))
+	err := file.Write(serialization.UInt8ToBytes(CURRENT_VERSION))
 	if err != nil {
 		return err
 	}
 	// m
-	_, err = file.Write(serialization.UInt64ToBytes(bl.m))
+	err = file.Write(serialization.UInt64ToBytes(bl.m))
 	if err != nil {
 		return err
 	}
 	// k
-	_, err = file.Write(serialization.UInt64ToBytes(bl.k))
+	err = file.Write(serialization.UInt64ToBytes(bl.k))
 	if err != nil {
 		return err
 	}	
 	// k hash seeds
 	for i := uint64(0); i < bl.k; i++ {
-		_, err = file.Write(bl.hashes[i].Seed)
+		err = file.Write(bl.hashes[i].Seed)
 		if err != nil {
 			return err
 		}
@@ -90,7 +90,7 @@ func (bl *BloomFilter) SerializeToFile(file os.File) error {
 	// elements
 	var numberOfElements uint64 = calculateNumberOfElements(bl.m)
 	for i := uint64(0); i < numberOfElements; i++ {
-		_, err = file.Write(serialization.UInt8ToBytes(bl.data[i]))
+		err = file.Write(serialization.UInt8ToBytes(bl.data[i]))
 		if err != nil {
 			return err
 		}
@@ -98,78 +98,58 @@ func (bl *BloomFilter) SerializeToFile(file os.File) error {
 	return nil
 }
 
-func (bl *BloomFilter) DeserializeFromFile(file os.File) error {
+func (bl *BloomFilter) DeserializeFromFile(file blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k
 	// k*4B - hash seeds
 	// nofEl * 1B - data
 
-	// buffer for reading
-	var buffer1 []byte = make([]byte, 1)
-	// var buffer2 []byte = make([]byte, 2)
-	var buffer4 []byte = make([]byte, 4)
-	var buffer8 []byte = make([]byte, 8)
-
-	n, err := file.Read(buffer1)
+	data, err := file.Read(1)
 	if err != nil {
 		return err
 	}
-	if n != 1 {
-		return errors.New("error reading version")
-	}
-	var version uint8 = serialization.BytesToUInt8(buffer1)
+	var version uint8 = serialization.BytesToUInt8(data)
 	if version != CURRENT_VERSION {
 		// handle diffrent version
 		return errors.New("version mismatch")
 	}
 
 	// m
-	n, err = file.Read(buffer8)
+	data, err = file.Read(8)
 	if err != nil {
 		return err
 	}
-	if n != 8 {
-		return errors.New("error reading m")
-	}
-	bl.m = serialization.BytesToUInt64(buffer8)
+	bl.m = serialization.BytesToUInt64(data)
 
 	// k
-	n, err = file.Read(buffer8)
+	data, err = file.Read(8)
 	if err != nil {
 		return err
 	}
-	if n != 8 {
-		return errors.New("error reading k")
-	}
-	bl.k = serialization.BytesToUInt64(buffer8)
+	bl.k = serialization.BytesToUInt64(data)
 
 	// seeds
 	bl.hashes = make([]hash.HashWithSeed, bl.k)
 	for i := uint64(0); i < bl.k; i++ {
-		n, err = file.Read(buffer4)
+		data, err = file.Read(4)
 		if err != nil {
 			return err
 		}
-		if n != 4 {
-			return errors.New("error reading seed")
-		}
+		
 		bl.hashes[i] = hash.HashWithSeed{}
-		copy(bl.hashes[i].Seed, buffer4)	// copy bytes from buffer to seed
+		bl.hashes[i].Seed = data
 	}
 	
 	// data
 	var numberOfElements uint64 = calculateNumberOfElements(bl.m)
 	bl.data = make([]uint8, numberOfElements)
 	for i := uint64(0); i < numberOfElements; i++ {
-		n, err = file.Read(buffer1)
+		data, err = file.Read(1)
 		if err != nil {
 			return err
 		}
-		if n != 1 {
-			return errors.New("error reading data")
-		}
-		bl.data[i] = serialization.BytesToUInt8(buffer1)
+		bl.data[i] = serialization.BytesToUInt8(data)
 	}
 	return nil // no error
 }

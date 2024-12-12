@@ -15,7 +15,7 @@ func Int8ToBytes(value int8) []byte {
 
 func UInt16ToBytes(value uint16) []byte {
 	bytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(bytes, value)
+	binary.LittleEndian.PutUint16(bytes, value)
 	return bytes
 }
 
@@ -25,7 +25,7 @@ func Int16ToBytes(value int16) []byte {
 
 func UInt32ToBytes(value uint32) []byte {
 	bytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(bytes, value)
+	binary.LittleEndian.PutUint32(bytes, value)
 	return bytes
 }
 
@@ -35,7 +35,7 @@ func Int32ToBytes(value int32) []byte {
 
 func UInt64ToBytes(value uint64) []byte {
 	bytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(bytes, value)
+	binary.LittleEndian.PutUint64(bytes, value)
 	return bytes
 }
 
@@ -64,7 +64,7 @@ func BytesToInt8(bytes []byte) int8 {
 }
 
 func BytesToUInt16(bytes []byte) uint16 {
-    return binary.BigEndian.Uint16(bytes)
+    return binary.LittleEndian.Uint16(bytes)
 }
 
 func BytesToInt16(bytes []byte) int16 {
@@ -72,7 +72,7 @@ func BytesToInt16(bytes []byte) int16 {
 }
 
 func BytesToUInt32(bytes []byte) uint32 {
-    return binary.BigEndian.Uint32(bytes)
+    return binary.LittleEndian.Uint32(bytes)
 }
 
 func BytesToInt32(bytes []byte) int32 {
@@ -80,7 +80,7 @@ func BytesToInt32(bytes []byte) int32 {
 }
 
 func BytesToUInt64(bytes []byte) uint64 {
-    return binary.BigEndian.Uint64(bytes)
+    return binary.LittleEndian.Uint64(bytes)
 }
 
 func BytesToInt64(bytes []byte) int64 {

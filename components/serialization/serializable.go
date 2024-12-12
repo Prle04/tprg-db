@@ -1,10 +1,12 @@
 package serialization
 
-import "os"
+import (
+	"tprgdb/components/blockmanager"
+)
 
 type Serializable interface {
 	SerializeToBytes() []byte
 	DeserializeFromBytes(data []byte)
-	SerializeToFile(file os.File) error
-	DeserializeFromFile(file os.File) error
+	SerializeToFile(file blockmanager.BlockedFile) error
+	DeserializeFromFile(file blockmanager.BlockedFile) error
 }
