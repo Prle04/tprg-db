@@ -137,7 +137,7 @@ func (tree *BTree) findNode(key string) (*Node, *Element) {
 			if key == element.key {
 				return currentNode, element
 				//Ako je trazeni key manji od trenutnog znaci potencijalno se nalazi kod dece
-			} else if key < element.key {
+			} else if key < element.key && len(currentNode.children) != 0 {
 				currentNode = currentNode.children[i]
 				break
 				//Ako nije nigde onda silazimo na sledece dete
@@ -159,6 +159,13 @@ func (tree *BTree) insertElement(elem *Element) {
 			children: []*Node{},
 			parent:   nil,
 		}
+		return
+	}
+
+	_, existingElement := tree.findNode(elem.key)
+
+	if existingElement != nil {
+		existingElement = elem
 		return
 	}
 
@@ -196,7 +203,7 @@ func (tree *BTree) printNode(node *Node, level int) {
 	}
 }
 
-func (tree *BTree) Push(key string, value []byte) {
+func (tree *BTree) Set(key string, value []byte) {
 	//Kreiramo novi element
 	newElement := &Element{
 		key:       key,
@@ -207,7 +214,7 @@ func (tree *BTree) Push(key string, value []byte) {
 	tree.insertElement(newElement)
 }
 
-func (tree *BTree) Pop(key string) {
+func (tree *BTree) Delete(key string) {
 	currentNode, elem := tree.findNode(key)
 
 	if currentNode == nil {
@@ -217,7 +224,7 @@ func (tree *BTree) Pop(key string) {
 	}
 }
 
-func (tree *BTree) Find(key string) []byte {
+func (tree *BTree) Get(key string) []byte {
 	if tree.isTreeEmpty() {
 		return nil
 	}
