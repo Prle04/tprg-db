@@ -22,9 +22,10 @@ type Node struct {
 
 type BTree struct {
 	//elementi b stabla
-	root        *Node
-	minChildren uint32
-	maxChildren uint32
+	root             *Node
+	minChildren      uint32
+	maxChildren      uint32
+	numberOfElements uint32
 }
 
 func (tree *BTree) isTreeEmpty() bool {
@@ -159,13 +160,15 @@ func (tree *BTree) insertElement(elem *Element) {
 			children: []*Node{},
 			parent:   nil,
 		}
+		tree.numberOfElements++
 		return
 	}
 
 	_, existingElement := tree.findNode(elem.key)
 
 	if existingElement != nil {
-		existingElement = elem
+		existingElement.value = elem.value
+		existingElement.isDeleted = elem.isDeleted
 		return
 	}
 
@@ -174,6 +177,7 @@ func (tree *BTree) insertElement(elem *Element) {
 	currentNode.keys = append(currentNode.keys, nil)
 	copy(currentNode.keys[insertIndex+1:], currentNode.keys[insertIndex:])
 	currentNode.keys[insertIndex] = elem
+	tree.numberOfElements += 1
 
 	if uint32(len(currentNode.keys)) > tree.maxChildren {
 		tree.splitNode(currentNode)
@@ -249,13 +253,24 @@ func (tree *BTree) Print() {
 	tree.printNode(tree.root, 0)
 }
 
-func NewBTree(maxChildren uint32) *BTree {
+func NewBTree(maxChildren uint32) (*BTree, error) {
 	if maxChildren <= 0 {
-		fmt.Println("Number of children must be positive number!")
+		return nil, &MaxChildrenError{}
 	}
 	return &BTree{
-		root:        nil,
-		minChildren: maxChildren / 2,
-		maxChildren: maxChildren,
-	}
+		root:             nil,
+		minChildren:      maxChildren / 2,
+		maxChildren:      maxChildren,
+		numberOfElements: 0,
+	}, nil
+}
+
+func (tree *BTree) GetNumberOfKeys() uint32 {
+	return tree.numberOfElements
+}
+
+type MaxChildrenError struct{}
+
+func (m *MaxChildrenError) Error() string {
+	return "number of children must be positive integer!"
 }

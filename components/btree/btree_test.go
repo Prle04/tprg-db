@@ -6,7 +6,7 @@ import (
 )
 
 func TestBTree_Set(t *testing.T) {
-	tree := NewBTree(3)
+	tree, _ := NewBTree(3)
 
 	tree.Set("key1", []byte("value1"))
 	tree.Set("key2", []byte("value2"))
@@ -30,7 +30,7 @@ func TestBTree_Set(t *testing.T) {
 }
 
 func TestBTree_Delete(t *testing.T) {
-	tree := NewBTree(3)
+	tree, _ := NewBTree(3)
 
 	tree.Set("key1", []byte("value1"))
 	tree.Set("key2", []byte("value2"))
@@ -44,7 +44,7 @@ func TestBTree_Delete(t *testing.T) {
 }
 
 func TestBTree_Get(t *testing.T) {
-	tree := NewBTree(3)
+	tree, _ := NewBTree(3)
 
 	tree.Set("key1", []byte("value1"))
 	tree.Set("key2", []byte("value2"))
@@ -67,7 +67,7 @@ func TestBTree_Get(t *testing.T) {
 }
 
 func TestBTree_SplitNode(t *testing.T) {
-	tree := NewBTree(3)
+	tree, _ := NewBTree(3)
 
 	tree.Set("key1", []byte("value1"))
 	tree.Set("key2", []byte("value2"))

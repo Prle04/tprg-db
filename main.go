@@ -7,11 +7,12 @@ import (
 
 func main() {
 	fmt.Printf("\n\n")
-	tr := btree.NewBTree(4)
+	tr, _ := btree.NewBTree(4)
 	i := 0
 	for i < 20 {
 		str := fmt.Sprintf("%3d", i)
 		tr.Set(str, []byte(str))
+		fmt.Println(tr.GetNumberOfKeys())
 		i += 3
 
 	}
@@ -53,9 +54,10 @@ func main() {
 
 	tr.Print()
 
-	tr.Delete(str)
-
 	fmt.Print("\n\n\n")
 	tr.Print()
 
+	l := tr.GetNumberOfKeys()
+	fmt.Print("\n\n")
+	fmt.Print(l)
 }
