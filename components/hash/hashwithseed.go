@@ -26,3 +26,8 @@ func CreateHashFunctions(k uint32) []HashWithSeed {
 	}
 	return h
 }
+
+func GetMD5Hash(data []byte) uint64 {
+	h := md5.Sum(data)
+	return serialization.BytesToUInt64(h[:])
+}
