@@ -1,7 +1,6 @@
 package simhash
 
 import (
-	"encoding/binary"
 	"regexp"
 	"strings"
 	"tprgdb/components/hash"
@@ -15,10 +14,6 @@ var bannedWords = map[string]int{
 	"but": 0,
 	"if":  0,
 	"or":  0,
-}
-
-type Simhash struct {
-	fingerprint uint64
 }
 
 // za svaku rec broj ponavljanja i njen hash
@@ -109,18 +104,13 @@ func calculate(m map[string]wordData) uint64 {
 	return simhash
 }
 
-func Create(s string) Simhash {
+func SimHash(s string) uint64 {
 	m := createMap(s)
-
-	fp := Simhash{
-		fingerprint: calculate(m),
-	}
-
-	return fp
+	return calculate(m)
 }
 
-func HammingDistance(hash1, hash2 uint64) int {
-	xor := hash1 ^ hash2
+func HammingDistance(fp1, fp2 uint64) int {
+	xor := fp1 ^ fp2
 
 	distance := 0
 	for xor != 0 {
@@ -131,10 +121,4 @@ func HammingDistance(hash1, hash2 uint64) int {
 	}
 
 	return distance
-}
-
-func (s Simhash) Serialize() []byte {
-	byteArray := make([]byte, 8)
-	binary.LittleEndian.PutUint64(byteArray, s.fingerprint)
-	return byteArray
 }

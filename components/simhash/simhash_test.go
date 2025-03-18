@@ -29,13 +29,9 @@ func readFile(path string) string {
 }
 
 func TestSimhash(t *testing.T) {
-	sh1 := Create(readFile("./text1.txt"))
-	sh2 := Create(readFile("./text2.txt"))
-	sh3 := Create(readFile("./text3.txt"))
-
-	fp1 := sh1.fingerprint
-	fp2 := sh2.fingerprint
-	fp3 := sh3.fingerprint
+	fp1 := SimHash(readFile("./text1.txt"))
+	fp2 := SimHash(readFile("./text2.txt"))
+	fp3 := SimHash(readFile("./text3.txt"))
 
 	t.Log("sh1 fingerprint: ", fp1)
 	t.Log("sh2 fingerprint: ", fp2)
