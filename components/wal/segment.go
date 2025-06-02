@@ -1,9 +1,9 @@
 package wal
 
 import (
-	"db/components/blockmanager"
-	"db/components/serialization"
 	"time"
+	"tprgdb/components/blockmanager"
+	"tprgdb/components/serialization"
 )
 
 type walsegment struct {
@@ -97,11 +97,11 @@ func (segment *walsegment) add(key string, value []byte, isContinuance bool) []b
 // deletes a record from the segment and returns true if the record was deleted successfully
 func (segment *walsegment) delete(key string) bool {
 	record := &walrecord{
-		key:       key,
+		key:        key,
 		recordType: FragmentTypeFull,
-		value:     make([]byte, 0),
-		timestamp: uint64(time.Now().Unix()),
-		tombstone: true,
+		value:      make([]byte, 0),
+		timestamp:  uint64(time.Now().Unix()),
+		tombstone:  true,
 	}
 	// check if the record fits in the segment
 	if segment.size+record.size() > segment.numberOfBlocks*segment.blockSize {
