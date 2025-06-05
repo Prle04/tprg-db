@@ -48,53 +48,65 @@ func Float32ToBytes(value float32) []byte {
 }
 
 func Float64ToBytes(value float64) []byte {
-    return UInt64ToBytes(math.Float64bits(value))
+	return UInt64ToBytes(math.Float64bits(value))
 }
 
 func StringToBytes(value string) []byte {
-    return []byte(value)
+	return []byte(value)
+}
+
+func BoolToBytes(value bool) []byte {
+	if value {
+		return UInt8ToBytes(1)
+	}
+	return UInt8ToBytes(0)
+}
+
+func BytesToBool(bytes []byte) bool {
+	intValue := BytesToUInt8(bytes)
+	return intValue == 1
 }
 
 func BytesToUInt8(bytes []byte) uint8 {
-    return uint8(bytes[0])
+	return uint8(bytes[0])
 }
 
 func BytesToInt8(bytes []byte) int8 {
-    return int8(bytes[0])
+	return int8(bytes[0])
 }
 
 func BytesToUInt16(bytes []byte) uint16 {
-    return binary.LittleEndian.Uint16(bytes)
+	return binary.LittleEndian.Uint16(bytes)
 }
 
 func BytesToInt16(bytes []byte) int16 {
-    return int16(BytesToUInt16(bytes))
+	return int16(BytesToUInt16(bytes))
 }
 
 func BytesToUInt32(bytes []byte) uint32 {
-    return binary.LittleEndian.Uint32(bytes)
+	return binary.LittleEndian.Uint32(bytes)
 }
 
 func BytesToInt32(bytes []byte) int32 {
-    return int32(BytesToUInt32(bytes))
+	return int32(BytesToUInt32(bytes))
 }
 
 func BytesToUInt64(bytes []byte) uint64 {
-    return binary.LittleEndian.Uint64(bytes)
+	return binary.LittleEndian.Uint64(bytes)
 }
 
 func BytesToInt64(bytes []byte) int64 {
-    return int64(BytesToUInt64(bytes))
+	return int64(BytesToUInt64(bytes))
 }
 
 func BytesToFloat32(bytes []byte) float32 {
-    return math.Float32frombits(BytesToUInt32(bytes))
+	return math.Float32frombits(BytesToUInt32(bytes))
 }
 
 func BytesToFloat64(bytes []byte) float64 {
-    return math.Float64frombits(BytesToUInt64(bytes))
+	return math.Float64frombits(BytesToUInt64(bytes))
 }
 
 func BytesToString(bytes []byte) string {
-    return string(bytes)
+	return string(bytes)
 }
