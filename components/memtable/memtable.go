@@ -26,11 +26,16 @@ type MemtableDataStructure interface {
 	GetAllItems() []*MemtableItem
 }
 
-type Memtable struct {
-	data []MemtableDataStructure
+type memtableStruct struct {
+	dataStructureInstance MemtableDataStructure
+	// Contains a boolean indicating whether the instance needs to be flushed.
+	flush bool
+	// Contains the number of the last WAL segment that was
+	lastSegmentNumber uint64
+}
 
-	// Contains a boolean slice indicating whether each instance needs to be flushed.
-	flush []bool
+type Memtable struct {
+	instances []memtableStruct
 
 	// number of keys each instance can hold before it needs to be flushed.
 	threshold         int
@@ -53,17 +58,21 @@ func NewMemtable(
 	}
 
 	// Create instances of MemtableDataStructure
-	data := make([]MemtableDataStructure, numberOfInstances)
+	instances := make([]memtableStruct, numberOfInstances)
 	for i := range numberOfInstances {
-		instance, err := newInstance()
+		dataStruct, err := newInstance()
 		if err != nil {
 			return nil, err
 		}
-		data[i] = instance
+		instances[i] = memtableStruct{
+			dataStructureInstance: dataStruct,
+			flush:                 false,
+			lastSegmentNumber:     0,
+		}
 	}
 
 	return &Memtable{
-		data:              data,
+		instances:         instances,
 		threshold:         threshold,
 		numberOfInstances: numberOfInstances,
 
@@ -74,7 +83,7 @@ func NewMemtable(
 func (m *Memtable) Get(key string) *MemtableItem {
 
 	// Check current instance first
-	item := m.data[m.currentInstance].Get(key)
+	item := m.instances[m.currentInstance].dataStructureInstance.Get(key)
 	if item != nil {
 		return item
 	}
@@ -84,7 +93,7 @@ func (m *Memtable) Get(key string) *MemtableItem {
 	// and going full circle
 	index := (m.currentInstance - 1 + m.numberOfInstances) % m.numberOfInstances
 	for index != m.currentInstance {
-		item = m.data[index].Get(key)
+		item = m.instances[index].dataStructureInstance.Get(key)
 		if item != nil {
 			return item
 		}
@@ -94,42 +103,45 @@ func (m *Memtable) Get(key string) *MemtableItem {
 	return nil // Key not found in any instance
 }
 
-func (m *Memtable) Set(key string, value []byte) error {
+func (m *Memtable) Set(key string, value []byte, segmentNumber uint64) error {
 	// Check if the current instance has reached the threshold
-	if m.data[m.currentInstance].GetNumberOfKeys() >= m.threshold {
+	if m.instances[m.currentInstance].dataStructureInstance.GetNumberOfKeys() >= m.threshold {
 		m.moveToNextInstance()
 	}
-	m.data[m.currentInstance].Set(key, value)
+	m.instances[m.currentInstance].dataStructureInstance.Set(key, value)
+	m.instances[m.currentInstance].lastSegmentNumber = segmentNumber
 	return nil
 }
 
-func (m *Memtable) Delete(key string) error {
+func (m *Memtable) Delete(key string, segmentNumber uint64) error {
 	// Check if the current instance has reached the threshold
-	if m.data[m.currentInstance].GetNumberOfKeys() >= m.threshold {
+	if m.instances[m.currentInstance].dataStructureInstance.GetNumberOfKeys() >= m.threshold {
 		m.moveToNextInstance()
 	}
-	m.data[m.currentInstance].Delete(key)
+	m.instances[m.currentInstance].dataStructureInstance.Delete(key)
+	m.instances[m.currentInstance].lastSegmentNumber = segmentNumber
 	return nil
 }
 
 func (m *Memtable) moveToNextInstance() {
-	m.flush[m.currentInstance] = true // Mark the current instance for flushing
+	m.instances[m.currentInstance].flush = true // Mark the current instance for flushing
 	m.currentInstance = (m.currentInstance + 1) % m.numberOfInstances
-	m.data[m.currentInstance].Clear()
+	m.instances[m.currentInstance].dataStructureInstance.Clear()
 }
 
-func (m *Memtable) Flush() []*MemtableItem {
+func (m *Memtable) Flush() ([]*MemtableItem, uint64) {
 	// Loop through all instances to see if they need to be flushed
 	// Starting from the previous instance since the current instance cannot be flushed
 	// and going full circle
 	index := (m.currentInstance - 1 + m.numberOfInstances) % m.numberOfInstances
 	for index != m.currentInstance {
-		if m.flush[index] {
-			m.flush[index] = false // Reset the flush flag
-			return m.data[index].GetAllItems()
+		if m.instances[index].flush {
+			m.instances[index].flush = false // Reset the flush flag
+			return m.instances[index].dataStructureInstance.GetAllItems(),
+				m.instances[index].lastSegmentNumber
 		}
 		// Move to the previous instance
 		index = (index - 1 + m.numberOfInstances) % m.numberOfInstances
 	}
-	return nil // No instance needs to be flushed
+	return nil, 0 // No instance needs to be flushed
 }

@@ -86,7 +86,7 @@ func (wal *WriteAheadLog) Add(key string, value []byte) error {
 		}
 		// we need to open a new segment
 		segmentNumber := wal.currentSegment.segmentNumber
-		wal.currentSegment.file.Close()
+		wal.currentSegment.close()
 		err := wal.openNewSegment(segmentNumber + 1)
 		if err != nil {
 			return err
@@ -133,6 +133,10 @@ func (wal *WriteAheadLog) openNewSegment(segmentNumber uint64) error {
 
 func (wal *WriteAheadLog) Close() error {
 	return wal.currentSegment.file.Close()
+}
+
+func (wal *WriteAheadLog) GetCurrentSegmentNumber() uint64 {
+	return wal.currentSegment.segmentNumber
 }
 
 type WALIterator struct {
@@ -189,4 +193,3 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 	}()
 	return ch
 }
-
