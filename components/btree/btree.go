@@ -269,6 +269,60 @@ func (tree *BTree) GetNumberOfKeys() uint32 {
 	return tree.numberOfElements
 }
 
+func (node *Node) clear() {
+	if node == nil {
+		return
+	}
+
+	// Recursively clear all children nodes
+	for _, child := range node.children {
+		child.clear()
+	}
+
+	// Clear the current node's keys and children
+	node.keys = nil
+	node.children = nil
+	node.parent = nil
+}
+
+func (tree *BTree) Clear() {
+	tree.root.clear()
+	tree.root = nil
+	tree.numberOfElements = 0
+}
+
+// GetAllItems returns all items in the BTree sorted by key.
+func (tree *BTree) GetAllItems() []*Element {
+	if tree.isTreeEmpty() {
+		return nil
+	}
+
+	var items []*Element
+
+	var traverse func(node *Node)
+	traverse = func(node *Node) {
+		if node == nil {
+			return
+		}
+
+		for i, el := range node.keys {
+			// Traverse the left child before the current key
+			if i < len(node.children) {
+				traverse(node.children[i])
+			}
+			items = append(items, el)
+		}
+		// Traverse the right child after the last key
+		if len(node.children) > len(node.keys) {
+			traverse(node.children[len(node.keys)])
+		}
+	}
+
+	traverse(tree.root)
+
+	return items
+}
+
 type MaxChildrenError struct{}
 
 func (m *MaxChildrenError) Error() string {

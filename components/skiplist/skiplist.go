@@ -148,15 +148,15 @@ func (sl *SkipList) Set(key string, value []byte) {
 
 }
 
-func (sl *SkipList) Get(key string) []byte {
+func (sl *SkipList) Get(key string) *SkipListNode {
 	current := sl.head
 
 	for current != nil {
 		for current.right != nil && current.right.key < key {
 			current = current.right
 		}
-		if current.right != nil && current.right.key == key && !current.right.tombstone {
-			return current.right.data
+		if current.right != nil && current.right.key == key {
+			return current.right
 		}
 		current = current.down
 	}
@@ -164,7 +164,7 @@ func (sl *SkipList) Get(key string) []byte {
 	return nil
 }
 
-func (sl *SkipList) Del(key string) {
+func (sl *SkipList) Delete(key string) {
 	update, found := sl.Finding_and_updating(key, nil, true, false)
 
 	if !found {
@@ -193,4 +193,14 @@ func (sl *SkipList) Print() {
 		print("\n")
 		current = current.down
 	}
+}
+
+func (sn *SkipListNode) GetKey() string {
+	return sn.key
+}
+func (sn *SkipListNode) GetValue() []byte {
+	return sn.data
+}
+func (sn *SkipListNode) IsDeleted() bool {
+	return sn.tombstone
 }
