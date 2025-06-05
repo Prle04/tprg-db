@@ -189,3 +189,4 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 	}()
 	return ch
 }
+

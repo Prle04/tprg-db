@@ -1,43 +1,135 @@
 package memtable
 
-import "tprgdb/components/btree"
-//niz instanci
-//wall segment number
+import (
+	"errors"
+)
 
+// MemtableItem represents an item in the memtable with a key, value, and deletion status.
+type MemtableItem interface {
+	GetKey() string
+	GetValue() []byte
+	IsDeleted() bool
+}
+
+// MemtableDataStructure defines the interface for a data structure used in the memtable.
+// So far implementated: SkipList, HashMapWrapper, and a Btree.
 type MemtableDataStructure interface {
+	Get(key string) *MemtableItem
 	Set(key string, value []byte)
 	Delete(key string)
-	Get(key string) (value []byte)
+
+	Clear()
+
+	GetNumberOfKeys() int
+
+	// GetAllItems returns all items in the data structure sorted by key.
+	GetAllItems() []*MemtableItem
 }
 
 type Memtable struct {
-	data MemtableDataStructure
-	wallSegmentData uint64
+	data []MemtableDataStructure
+
+	// Contains a boolean slice indicating whether each instance needs to be flushed.
+	flush []bool
+
+	// number of keys each instance can hold before it needs to be flushed.
+	threshold         int
+	numberOfInstances int
+
+	// currentInstance is the index of the current instance being used for operations.
+	currentInstance int
 }
 
+// type of a function that creates a new instance of MemtableDataStructure.
+type newInstanceFunc func() (MemtableDataStructure, error)
 
-func NewMemtable(maxChildren uint32) (*Memtable, error) {
-	btree, err := btree.NewBTree(maxChildren)
-	if err != nil {
-		return nil, err
+func NewMemtable(
+	numberOfInstances int,
+	threshold int,
+	newInstance newInstanceFunc,
+) (*Memtable, error) {
+	if numberOfInstances <= 0 {
+		return nil, errors.New("number of instances must be greater than zero")
 	}
+
+	// Create instances of MemtableDataStructure
+	data := make([]MemtableDataStructure, numberOfInstances)
+	for i := range numberOfInstances {
+		instance, err := newInstance()
+		if err != nil {
+			return nil, err
+		}
+		data[i] = instance
+	}
+
 	return &Memtable{
-		data: btree,
+		data:              data,
+		threshold:         threshold,
+		numberOfInstances: numberOfInstances,
+
+		currentInstance: 0,
 	}, nil
 }
 
-func (m *Memtable) Set(key string, value []byte) {
-	m.data.Set(key, value)
+func (m *Memtable) Get(key string) *MemtableItem {
+
+	// Check current instance first
+	item := m.data[m.currentInstance].Get(key)
+	if item != nil {
+		return item
+	}
+
+	// Loop through all instances to find the key
+	// Starting from the previous instance
+	// and going full circle
+	index := (m.currentInstance - 1 + m.numberOfInstances) % m.numberOfInstances
+	for index != m.currentInstance {
+		item = m.data[index].Get(key)
+		if item != nil {
+			return item
+		}
+		// Move to the previous instance
+		index = (index - 1 + m.numberOfInstances) % m.numberOfInstances
+	}
+	return nil // Key not found in any instance
 }
 
-func (m *Memtable) Get(key string) []byte {
-	return m.data.Get(key)
+func (m *Memtable) Set(key string, value []byte) error {
+	// Check if the current instance has reached the threshold
+	if m.data[m.currentInstance].GetNumberOfKeys() >= m.threshold {
+		m.moveToNextInstance()
+	}
+	m.data[m.currentInstance].Set(key, value)
+	return nil
 }
 
+func (m *Memtable) Delete(key string) error {
+	// Check if the current instance has reached the threshold
+	if m.data[m.currentInstance].GetNumberOfKeys() >= m.threshold {
+		m.moveToNextInstance()
+	}
+	m.data[m.currentInstance].Delete(key)
+	return nil
+}
 
+func (m *Memtable) moveToNextInstance() {
+	m.flush[m.currentInstance] = true // Mark the current instance for flushing
+	m.currentInstance = (m.currentInstance + 1) % m.numberOfInstances
+	m.data[m.currentInstance].Clear()
+}
 
-
-
-
-
-
+func (m *Memtable) Flush() []*MemtableItem {
+	// Loop through all instances to see if they need to be flushed
+	// Starting from the previous instance since the current instance cannot be flushed
+	// and going full circle
+	index := (m.currentInstance - 1 + m.numberOfInstances) % m.numberOfInstances
+	for index != m.currentInstance {
+		if m.flush[index] {
+			m.flush[index] = false // Reset the flush flag
+			return m.data[index].GetAllItems()
+		}
+		// Move to the previous instance
+		index = (index - 1 + m.numberOfInstances) % m.numberOfInstances
+	}
+	return nil // No instance needs to be flushed
+}

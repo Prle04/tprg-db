@@ -39,15 +39,15 @@ func (hm *HashMapWrapper) Set(key string, value []byte) {
 	}
 }
 
-func (hm *HashMapWrapper) Get(key string) []byte {
-	if el, exists := hm.store[key]; exists && !el.isDeleted {
-		return el.value
+func (hm *HashMapWrapper) Get(key string) *element {
+	if el, exists := hm.store[key]; exists {
+		return el
 	}
 	return nil
 }
 
-func (hm *HashMapWrapper) Del(key string) {
-	if el, exists := hm.store[key]; exists && !el.isDeleted {
+func (hm *HashMapWrapper) Delete(key string) {
+	if el, exists := hm.store[key]; exists {
 		el.isDeleted = true
 	} else {
 		hm.store[key] = &element{
@@ -61,4 +61,14 @@ func (hm *HashMapWrapper) Del(key string) {
 
 func (hm *HashMapWrapper) NumberOfKeys() uint64 {
 	return hm.size
+}
+
+func (e *element) GetKey() string {
+	return e.key
+}
+func (e *element) GetValue() []byte {
+	return e.value
+}
+func (e *element) IsDeleted() bool {
+	return e.isDeleted
 }
