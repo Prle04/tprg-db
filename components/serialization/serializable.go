@@ -1,7 +1,7 @@
 package serialization
 
 import (
-	"db/components/blockmanager"
+	"tprgdb/components/blockmanager"
 )
 
 type Serializable interface {

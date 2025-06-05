@@ -1,10 +1,10 @@
 package wal
 
 import (
-	"db/components/blockmanager"
-	"db/components/hash"
-	"db/components/serialization"
 	"fmt"
+	"tprgdb/components/blockmanager"
+	"tprgdb/components/hash"
+	"tprgdb/components/serialization"
 )
 
 type walrecord struct {
