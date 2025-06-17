@@ -58,30 +58,38 @@ func (f *BlockedFile) Read(length uint64) ([]byte, error) {
 	return data, nil
 }
 
-func (f *BlockedFile) ReadUVariable() (uint64, error) {
+func (f *BlockedFile) ReadUVariable() ([]byte, uint64, error) {
 	data, err := f.Read(8) // Read 8 bytes for a uint64
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	value, n := binary.Uvarint(data)
 	if n <= 0 {
-		return 0, &VariableLengthError{}
+		return nil, 0, &VariableLengthError{}
 	}
-	f.position += uint64(n) - 8 // Adjust position by the number of bytes read
-	return value, nil
+	f.position -= 8 // Return to the start of the variable length data
+	bytesRead, err := f.Read(uint64(n))
+	if err != nil {
+		return nil, 0, err
+	}
+	return bytesRead, value, nil
 }
 
-func (f *BlockedFile) ReadVariable() (int64, error) {
-	data, err := f.Read(8) // Read 8 bytes for an int64
+func (f *BlockedFile) ReadVariable() ([]byte, int64, error) {
+	data, err := f.Read(8) // Read 8 bytes for a uint64
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	value, n := binary.Varint(data)
 	if n <= 0 {
-		return 0, &VariableLengthError{}
+		return nil, 0, &VariableLengthError{}
 	}
-	f.position += uint64(n) - 8 // Adjust position by the number of bytes read
-	return value, nil
+	f.position -= 8 // Return to the start of the variable length data
+	bytesRead, err := f.Read(uint64(n))
+	if err != nil {
+		return nil, 0, err
+	}
+	return bytesRead, value, nil
 }
 
 func (f *BlockedFile) Write(data []byte) error {
