@@ -1,11 +1,14 @@
 package blockmanager
 
-import "os"
+import (
+	"encoding/binary"
+	"os"
+)
 
 type BlockedFile struct {
-	manager  *BlockManager
-	path     string
-	position uint64
+	manager   *BlockManager
+	path      string
+	position  uint64
 	blockSize uint64
 }
 
@@ -53,6 +56,32 @@ func (f *BlockedFile) Read(length uint64) ([]byte, error) {
 		}
 	}
 	return data, nil
+}
+
+func (f *BlockedFile) ReadUVariable() (uint64, error) {
+	data, err := f.Read(8) // Read 8 bytes for a uint64
+	if err != nil {
+		return 0, err
+	}
+	value, n := binary.Uvarint(data)
+	if n <= 0 {
+		return 0, &VariableLengthError{}
+	}
+	f.position += uint64(n) - 8 // Adjust position by the number of bytes read
+	return value, nil
+}
+
+func (f *BlockedFile) ReadVariable() (int64, error) {
+	data, err := f.Read(8) // Read 8 bytes for an int64
+	if err != nil {
+		return 0, err
+	}
+	value, n := binary.Varint(data)
+	if n <= 0 {
+		return 0, &VariableLengthError{}
+	}
+	f.position += uint64(n) - 8 // Adjust position by the number of bytes read
+	return value, nil
 }
 
 func (f *BlockedFile) Write(data []byte) error {
