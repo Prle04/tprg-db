@@ -15,20 +15,35 @@ func hashData(data *[]byte) uint64 {
 }
 
 func NewMerkleTree(data []*[]byte) *MerkleTree {
+	if len(data) == 0 {
+		return nil
+	}
+	hashes := make([]uint64, len(data))
+	for i, d := range data {
+		if d == nil {
+			return nil
+		} else {
+			hashes[i] = hashData(d)
+		}
+	}
+	return NewMerkleTreeFromHashes(hashes)
+}
+
+func NewMerkleTreeFromHashes(hashes []uint64) *MerkleTree {
 	// number of elements
-	n := len(data)
-	if data == nil || n == 0 {
+	n := len(hashes)
+	if n == 0 {
 		return nil
 	}
 	// height of the tree
-	h := math.Ceil(math.Log2(float64(len(data))))
+	h := math.Ceil(math.Log2(float64(len(hashes))))
 	// total number of nodes - number of all nodes in the tree expect the leaves plus the elements that will be leaves
 	N := int(math.Pow(2, h)) - 1 + n
 	// create the array of nodes
 	nodes := make([]uint64, N)
 	// fill the leaves of the tree
 	for i := N - n; i < N; i++ {
-		nodes[i] = hashData(data[i-N+n])
+		nodes[i] = hashes[i-N+n]
 	}
 	// fill the rest of the tree
 	for i := N - n - 1; i >= 0; i-- {
