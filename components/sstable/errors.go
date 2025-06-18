@@ -26,3 +26,9 @@ type IncorrectModeError struct {
 func (e *IncorrectModeError) Error() string {
 	return "Incorrect mode: " + e.mode + ", expected 'one-file' or 'multi-file'"
 }
+
+type EmptyMerkleTreeError struct{}
+
+func (e *EmptyMerkleTreeError) Error() string {
+	return "Merkle tree cannot be empty"
+}

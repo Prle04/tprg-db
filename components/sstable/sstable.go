@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"path"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/bloomfilter"
 	"tprgdb/components/merkletree"
@@ -23,7 +24,8 @@ type SSTableHeader struct {
 
 func FlushToSSTable(
 	items []SSTableItem,
-	path string,
+	folderPath string,
+	tableName string,
 	summaryDilutionFactor uint8,
 	mode string,
 	manager *blockmanager.BlockManager,
@@ -32,10 +34,11 @@ func FlushToSSTable(
 	if mode != "one-file" && mode != "multi-file" {
 		return &IncorrectModeError{mode: mode}
 	}
+	path := path.Join(folderPath, tableName)
 
 	// Create the SSTable Segments
 	bloomfilter := bloomfilter.NewBloomFilter(len(items), 0.001)
-	index := make(SSTableIndex, 0, len(items))
+	index := make(SSTableIndex, len(items))
 	merkleBuilder := merkletree.NewMerkleTreeBuilder()
 	// Segment represents a block of data in the SSTable that will be a leaf in the Merkle tree
 	buffer := newSSTableBlock()
@@ -76,9 +79,13 @@ func FlushToSSTable(
 		if item.IsDeleted() {
 			// While there is no space in the buffer we write the buffer to the file
 			// and clear it for the next write
-			for ok, err := buffer.delete(dataFile, key, item.GetTimestamp()); !ok || err != nil; {
+			for {
+				ok, err := buffer.delete(dataFile, key, item.GetTimestamp())
 				if err != nil {
 					return err
+				}
+				if ok {
+					break
 				}
 				// datablock is full, we need to write it to the file
 				data := buffer.getData()
@@ -124,6 +131,13 @@ func FlushToSSTable(
 		keyLenght := dataFile.Tell() - startingOffset
 		// Update the current offset in the data file
 		currentOffset += keyLenght
+	}
+
+	// If the buffer is not empty we need to create a merkle tree leaf from it
+	if buffer.size > 0 {
+		data := buffer.getData()
+		merkleBuilder.AddData(&data)
+		buffer.clear()
 	}
 
 	// Now that we have completed writting all items to data segments
@@ -181,6 +195,9 @@ func FlushToSSTable(
 		// Write the Merkle tree to the file
 		header.MerkleStartOffset = dataFile.Tell()
 		merkleTree := merkleBuilder.Build()
+		if merkleTree == nil {
+			return &EmptyMerkleTreeError{}
+		}
 		err = merkleTree.SerializeToFile(dataFile)
 		if err != nil {
 			return err

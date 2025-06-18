@@ -10,7 +10,7 @@ type sstableBlock struct {
 func newSSTableBlock() *sstableBlock {
 	return &sstableBlock{
 		size: 0,
-		data: make([]byte, 0, 0),
+		data: make([]byte, 0),
 	}
 }
 
@@ -88,5 +88,5 @@ func (segment *sstableBlock) getData() []byte {
 
 func (segment *sstableBlock) clear() {
 	segment.size = 0
-	segment.data = make([]byte, 0, 0)
+	segment.data = make([]byte, 0)
 }

@@ -1,9 +1,12 @@
-package bloomfilter
+package bloomfilter_test
 
-import "testing"
+import (
+	"testing"
+	"tprgdb/components/bloomfilter"
+)
 
 func TestBloomFilter(t *testing.T) {
-	bf := NewBloomFilter(100, 0.01)
+	bf := bloomfilter.NewBloomFilter(100, 0.01)
 	data := []byte("data")
 	bf.Insert(data)
 	if bf.IsNotIn(data) {
@@ -15,11 +18,11 @@ func TestBloomFilter(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	bf := NewBloomFilter(100, 0.01)
+	bf := bloomfilter.NewBloomFilter(100, 0.01)
 	data := []byte("data")
 	bf.Insert(data)
 	bytes := bf.SerializeToBytes()
-	var bf2 BloomFilter
+	var bf2 bloomfilter.BloomFilter
 	bf2.DeserializeFromBytes(bytes)
 	if bf2.IsNotIn(data) {
 		t.Errorf("Expected data to be in bloom filter")
