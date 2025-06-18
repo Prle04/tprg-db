@@ -1,7 +1,9 @@
 package sstable
 
 import (
-	"path"
+	"os"
+	ospath "path"
+	"strings"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/bloomfilter"
 	"tprgdb/components/merkletree"
@@ -34,7 +36,7 @@ func FlushToSSTable(
 	if mode != "one-file" && mode != "multi-file" {
 		return &IncorrectModeError{mode: mode}
 	}
-	path := path.Join(folderPath, tableName)
+	path := ospath.Join(folderPath, tableName)
 
 	// Create the SSTable Segments
 	bloomfilter := bloomfilter.NewBloomFilter(len(items), 0.001)
@@ -215,12 +217,8 @@ func FlushToSSTable(
 			return err
 		}
 		// Write the table of contents for this SSTable
-		tocFile := manager.OpenBlockedFile(path + "-toc.txt")
-		err = tocFile.Write([]byte(path + "-data.db\n"))
-		if err != nil {
-			return err
-		}
-		err = tocFile.Close()
+
+		err = os.WriteFile(path+"-toc.txt", []byte(path+"-data.db\n"), 0o644)
 		return err
 	}
 	// The mode is "multi-file", we will write the index, bloom filter and Merkle tree to separate files
@@ -309,19 +307,98 @@ func FlushToSSTable(
 	}
 
 	// Write the table of contents for this SSTable
-	tocFile := manager.OpenBlockedFile(path + "-toc.txt")
+
 	tocData := []byte(path + "-data.db\n" +
 		path + "-index.db\n" +
 		path + "-summary.db\n" +
 		path + "-filter.db\n" +
 		path + "-metadata.db\n")
-	err = tocFile.Write(tocData)
-	if err != nil {
-		return err
-	}
-	err = tocFile.Close()
+	err = os.WriteFile(path+"-toc.txt", tocData, 0o644)
 	return err
 
+}
+
+func ReadBloomFilterFromSSTable(
+	folderPath string,
+	tableName string,
+	manager *blockmanager.BlockManager,
+) (*bloomfilter.BloomFilter, error) {
+	path := ospath.Join(folderPath, tableName)
+	toc, err := ReadTOCFromSSTable(folderPath, tableName, manager)
+	if err != nil {
+		return nil, err
+	}
+	filter := bloomfilter.NewEmptyBloomFilter()
+	if len(toc) == 1 {
+		// mode is "one-file"
+		header := &SSTableHeader{}
+		dataFile := manager.OpenBlockedFile(path + "-data.db")
+		headerData, err := dataFile.Read(SSTableHeaderSize)
+		if err != nil {
+			return nil, err
+		}
+		header.DeserializeFromBytes(headerData)
+		dataFile.Seek(header.BloomFilterStartOffset)
+		err = filter.DeserializeFromFile(dataFile)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// mode is "multi-file"
+		bloomFile := manager.OpenBlockedFile(path + "-filter.db")
+		err = filter.DeserializeFromFile(bloomFile)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return filter, nil
+}
+
+func ReadTOCFromSSTable(
+	folderPath string,
+	tableName string,
+	manager *blockmanager.BlockManager,
+) ([]string, error) {
+
+	filePath := ospath.Join(folderPath, tableName)
+
+	data, err := os.ReadFile(filePath + "-toc.txt")
+	if err != nil {
+		return nil, err
+	}
+	lines := make([]string, 0)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines, nil
+	// Binary mode is not used here, we read the file as text
+	// tocFile := manager.OpenBlockedFile(filePath + "-toc.txt")
+	// lines := make([]string, 0)
+	// line := make([]byte, 0, 1024)
+
+	// for {
+	// 	b, err := tocFile.Read(1)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	if b[0] == 0 {
+	// 		break // EOF
+	// 	}
+	// 	char := string(b)
+	// 	if char == "\n" {
+	// 		if len(line) == 0 {
+	// 			continue
+	// 		}
+	// 		lines = append(lines, string(line))
+	// 		line = make([]byte, 0, 1024)
+	// 	} else {
+	// 		line = append(line, b...)
+	// 	}
+	// }
+	// return lines, nil
 }
 
 // type WALIterator struct {
@@ -397,4 +474,11 @@ func (header *SSTableHeader) SerializeToBytes() []byte {
 	result = append(result, serialization.UInt64ToBytes(header.MerkleStartOffset)...)
 
 	return result
+}
+
+func (header *SSTableHeader) DeserializeFromBytes(data []byte) {
+	header.IndexStartOffset = serialization.BytesToUInt64(data[:8])
+	header.SummaryStartOffset = serialization.BytesToUInt64(data[8:16])
+	header.BloomFilterStartOffset = serialization.BytesToUInt64(data[16:24])
+	header.MerkleStartOffset = serialization.BytesToUInt64(data[24:32])
 }
