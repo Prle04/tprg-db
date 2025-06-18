@@ -5,19 +5,18 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"time"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/sstable"
 )
 
-var testDir string
+var testDir string = "test-temp"
 
 var BM = blockmanager.NewBlockManager(2048, 128)
 
 func setupTestDir() {
-	id := rand.Int63()
-	testDir = filepath.Join("test-temp-" + strconv.FormatInt(id, 10))
+	testDir = filepath.Join("test-temp")
 	err := os.Mkdir(testDir, 0o755)
 	if err != nil {
 		panic(err.Error())
@@ -80,7 +79,7 @@ func getData(n int) []*testItem {
 }
 
 func main() {
-	setupTestDir()
+	// setupTestDir()
 	// defer cleanupTestDir()
 
 	data := getData(100)
@@ -91,8 +90,40 @@ func main() {
 		items[i] = v
 	}
 
-	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "multi-file", BM)
+	// Sort items by key
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GetKey() < items[j].GetKey()
+	})
+
+	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "one-file", BM)
 	if err != nil {
 		panic("failed to create SSTable: " + err.Error())
 	}
+
+	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
+
+	for {
+		var input string
+		fmt.Print("Enter a key to search (or 'q' to quit): ")
+		_, err := fmt.Scanln(&input)
+		if err != nil {
+			fmt.Println("Error reading input:", err)
+			continue
+		}
+		if input == "q" {
+			break
+		}
+		item, err := reader.Get(input)
+		if err != nil {
+			fmt.Println("Error getting item:", err)
+			continue
+		}
+		if item == nil {
+			fmt.Println("Key not found:", input)
+		} else {
+			fmt.Printf("Found item: Key=%s, Value=%s, Timestamp=%d, Deleted=%t\n",
+				item.Key, string(item.Value), item.Timestamp, item.Tombstone)
+		}
+	}
+
 }

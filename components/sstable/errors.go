@@ -32,3 +32,9 @@ type EmptyMerkleTreeError struct{}
 func (e *EmptyMerkleTreeError) Error() string {
 	return "Merkle tree cannot be empty"
 }
+
+type EOFError struct{}
+
+func (e *EOFError) Error() string {
+	return "End of file reached"
+}
