@@ -58,7 +58,7 @@ func (bl *BloomFilter) calculateIndecies(hash uint64) (uint64, uint8) {
 	return elementIndex, elementBit
 }
 
-func (bl *BloomFilter) SerializeToFile(file blockmanager.BlockedFile) error {
+func (bl *BloomFilter) SerializeToFile(file *blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k
@@ -98,7 +98,7 @@ func (bl *BloomFilter) SerializeToFile(file blockmanager.BlockedFile) error {
 	return nil
 }
 
-func (bl *BloomFilter) DeserializeFromFile(file blockmanager.BlockedFile) error {
+func (bl *BloomFilter) DeserializeFromFile(file *blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k

@@ -137,3 +137,4 @@ func (f *BlockedFile) Stat() (os.FileInfo, error) {
 	}
 	return os.Stat(f.path)
 }
+
