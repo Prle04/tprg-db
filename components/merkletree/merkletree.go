@@ -2,6 +2,7 @@ package merkletree
 
 import (
 	"math"
+	"tprgdb/components/blockmanager"
 	"tprgdb/components/hash"
 	"tprgdb/components/serialization"
 )
@@ -71,4 +72,38 @@ func (mt *MerkleTree) GetRoot() uint64 {
 		return 0
 	}
 	return mt.nodes[0]
+}
+
+func (mt *MerkleTree) SerializeToFile(file *blockmanager.BlockedFile) error {
+
+	// Write the nodes
+	for _, node := range mt.nodes {
+		data := serialization.UInt64ToBytes(node)
+		if err := file.Write(data); err != nil {
+			return err
+		}
+	}
+	// Write 0 to indicate the end of the nodes
+	if err := file.Write(serialization.UInt64ToBytes(0)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (mt *MerkleTree) DeserializeFromFile(file *blockmanager.BlockedFile) error {
+
+	mt.nodes = make([]uint64, 0)
+	// Read the nodes
+	for {
+		data, err := file.Read(8) // Each node is 8 bytes
+		if err != nil {
+			return err
+		}
+		value := serialization.BytesToUInt64(data)
+		if value == 0 {
+			break // End of nodes
+		}
+		mt.nodes = append(mt.nodes, value)
+	}
+	return nil
 }

@@ -20,9 +20,8 @@ func (f *BlockedFile) Tell() uint64 {
 	return f.position
 }
 
-func (f *BlockedFile) Seek(offset uint64) error {
+func (f *BlockedFile) Seek(offset uint64) {
 	f.position = offset
-	return nil
 }
 
 func (f *BlockedFile) BlockSize() uint64 {

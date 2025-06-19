@@ -7,6 +7,6 @@ import (
 type Serializable interface {
 	SerializeToBytes() []byte
 	DeserializeFromBytes(data []byte)
-	SerializeToFile(file blockmanager.BlockedFile) error
-	DeserializeFromFile(file blockmanager.BlockedFile) error
+	SerializeToFile(file *blockmanager.BlockedFile) error
+	DeserializeFromFile(file *blockmanager.BlockedFile) error
 }

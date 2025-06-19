@@ -15,7 +15,6 @@ type BlockManager struct {
 	cache       *lrucache.LRUCache[*Block]
 }
 
-
 func NewBlockManager(blockSize uint64, maxSize uint64) *BlockManager {
 	return &BlockManager{
 		blockSize:   blockSize,
@@ -28,9 +27,9 @@ func NewBlockManager(blockSize uint64, maxSize uint64) *BlockManager {
 
 func (m *BlockManager) OpenBlockedFile(path string) *BlockedFile {
 	return &BlockedFile{
-		manager:  m,
-		path:     path,
-		position: 0,
+		manager:   m,
+		path:      path,
+		position:  0,
 		blockSize: m.blockSize,
 	}
 }
@@ -74,7 +73,7 @@ func (m *BlockManager) syncBlock(path string) error {
 	if !ok {
 		return nil
 	}
-	
+
 	if !block.IsModified() {
 		return nil
 	}
@@ -119,7 +118,6 @@ func (m *BlockManager) syncFile(filename string) error {
 	}
 	return nil
 }
-
 
 func (m *BlockManager) closeFile(filepath string) error {
 	syncErr := m.syncFile(filepath)
@@ -185,7 +183,6 @@ func (m *BlockManager) load(path string) (*Block, error) {
 	}
 	return block, nil
 }
-
 
 func getBlockPath(filename string, orderNumber uint64) string {
 	return filename + "+" + strconv.FormatUint(orderNumber, 10)

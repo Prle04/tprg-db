@@ -2,62 +2,128 @@ package main
 
 import (
 	"fmt"
-	"tprgdb/components/btree"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+	"tprgdb/components/blockmanager"
+	"tprgdb/components/sstable"
 )
 
+var testDir string = "test-temp"
+
+var BM = blockmanager.NewBlockManager(2048, 128)
+
+func setupTestDir() {
+	testDir = filepath.Join("test-temp")
+	err := os.Mkdir(testDir, 0o755)
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+func cleanupTestDir() {
+	if testDir != "" {
+		err := os.RemoveAll(testDir)
+		if err != nil {
+			panic("failed to remove test dir: " + err.Error())
+		}
+		testDir = ""
+	}
+}
+
+type testItem struct {
+	key   string
+	value []byte
+}
+
+func (item testItem) GetKey() string {
+	return item.key
+	// return randomString(10)
+}
+
+func (item testItem) GetValue() []byte {
+	return item.value
+	// length := rand.Intn(100) + 1 // Random length between 1 and 100
+	// str := randomString(length)
+	// return []byte(str)
+}
+
+func (item testItem) GetTimestamp() uint64 {
+	return uint64(time.Now().Unix())
+}
+
+func (item testItem) IsDeleted() bool {
+	return rand.Intn(2) == 0 // Randomly return true or false
+}
+
+func randomString(n int) string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
+func getData(n int) []*testItem {
+	items := make([]*testItem, n)
+	for i := 0; i < n; i++ {
+		items[i] = &testItem{
+			key:   fmt.Sprintf("key-%d", i),
+			value: []byte(fmt.Sprintf("value-%d", i)),
+		}
+	}
+	return items
+}
+
 func main() {
-	fmt.Printf("\n\n")
-	tr, _ := btree.NewBTree(4)
-	i := 0
-	for i < 20 {
-		str := fmt.Sprintf("%3d", i)
-		tr.Set(str, []byte(str))
-		fmt.Println(tr.GetNumberOfKeys())
-		i += 3
+	// setupTestDir()
+	// defer cleanupTestDir()
 
+	data := getData(100)
+
+	// Convert []*testItem to []sstable.SSTableItem
+	items := make([]sstable.SSTableItem, len(data))
+	for i, v := range data {
+		items[i] = v
 	}
 
-	tr.Print()
+	// Sort items by key
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GetKey() < items[j].GetKey()
+	})
 
-	fmt.Printf("\n\n")
-	i = 2
-	for i < 20 {
-		str := fmt.Sprintf("%3d", i)
-		tr.Set(str, []byte(str))
-
-		i += 3
-
+	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "one-file", BM)
+	if err != nil {
+		panic("failed to create SSTable: " + err.Error())
 	}
 
-	//Stavi dodatno funkciju ako vec postoji da samo izmeni
-	str := fmt.Sprintf("%3d", 19)
-	tr.Set(str, []byte(str))
+	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
 
-	str = fmt.Sprintf("%3d", 4)
-	tr.Set(str, []byte(str))
+	for {
+		var input string
+		fmt.Print("Enter a key to search (or 'q' to quit): ")
+		_, err := fmt.Scanln(&input)
+		if err != nil {
+			fmt.Println("Error reading input:", err)
+			continue
+		}
+		if input == "q" {
+			break
+		}
+		item, err := reader.Get(input)
+		if err != nil {
+			fmt.Println("Error getting item:", err)
+			continue
+		}
+		if item == nil {
+			fmt.Println("Key not found:", input)
+		} else {
+			fmt.Printf("Found item: Key=%s, Value=%s, Timestamp=%d, Deleted=%t\n",
+				item.Key, string(item.Value), item.Timestamp, item.Tombstone)
+		}
+	}
 
-	str = fmt.Sprintf("%3d", 20)
-	tr.Set(str, []byte(str))
-	str = fmt.Sprintf("%3d", 21)
-	tr.Set(str, []byte(str))
-	str = fmt.Sprintf("%3d", 22)
-	tr.Set(str, []byte(str))
-
-	e := tr.Get(str)
-	fmt.Println(e)
-
-	str = fmt.Sprintf("%3d", 22)
-	tr.Set(str, []byte("Lukaa"))
-
-	e = tr.Get(str)
-	fmt.Println(e)
-
-	tr.Print()
-
-	fmt.Print("\n\n\n")
-	tr.Print()
-
-	l := tr.GetNumberOfKeys()
-	fmt.Print("\n\n")
-	fmt.Print(l)
 }

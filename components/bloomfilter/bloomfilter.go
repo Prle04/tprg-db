@@ -18,7 +18,7 @@ type BloomFilter struct {
 const ELEMENT_SIZE uint8 = 8
 const CURRENT_VERSION uint8 = 1
 
-func NewBloomFilter(expectedElements int, falsePositiveRate float64) BloomFilter {
+func NewBloomFilter(expectedElements int, falsePositiveRate float64) *BloomFilter {
 	var bloomfilter BloomFilter
 	bloomfilter.m = uint64(calculateM(expectedElements, falsePositiveRate))
 	bloomfilter.k = uint64(calculateK(expectedElements, uint(bloomfilter.m)))
@@ -26,7 +26,16 @@ func NewBloomFilter(expectedElements int, falsePositiveRate float64) BloomFilter
 	var numberOfElements uint64 = calculateNumberOfElements(bloomfilter.m)
 	bloomfilter.m = numberOfElements * uint64(ELEMENT_SIZE)
 	bloomfilter.data = make([]uint8, numberOfElements)
-	return bloomfilter
+	return &bloomfilter
+}
+
+func NewEmptyBloomFilter() *BloomFilter {
+	var bloomfilter BloomFilter
+	bloomfilter.m = 0
+	bloomfilter.k = 0
+	bloomfilter.hashes = make([]hash.HashWithSeed, 0)
+	bloomfilter.data = make([]uint8, 0)
+	return &bloomfilter
 }
 
 func (bl *BloomFilter) Insert(data []byte) {
@@ -58,7 +67,7 @@ func (bl *BloomFilter) calculateIndecies(hash uint64) (uint64, uint8) {
 	return elementIndex, elementBit
 }
 
-func (bl *BloomFilter) SerializeToFile(file blockmanager.BlockedFile) error {
+func (bl *BloomFilter) SerializeToFile(file *blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k
@@ -98,7 +107,7 @@ func (bl *BloomFilter) SerializeToFile(file blockmanager.BlockedFile) error {
 	return nil
 }
 
-func (bl *BloomFilter) DeserializeFromFile(file blockmanager.BlockedFile) error {
+func (bl *BloomFilter) DeserializeFromFile(file *blockmanager.BlockedFile) error {
 	// 1B - Version
 	// 8B - m
 	// 8B - k
