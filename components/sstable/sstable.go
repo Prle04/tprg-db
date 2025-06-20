@@ -158,6 +158,14 @@ func (s *SSTable) Get(key string) (*SSItem, error) {
 	return result, nil
 }
 
+func (s *SSTable) GetNumberOfItems() (uint64, error) {
+	header, err := s.getHeader()
+	if err != nil {
+		return 0, err
+	}
+	return header.NumberOfItems, nil
+}
+
 // func (s *SSTable) getTOC() ([]string, error) {
 // 	if s.toc != nil {
 // 		return s.toc, nil

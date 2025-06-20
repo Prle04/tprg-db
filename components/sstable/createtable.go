@@ -21,6 +21,7 @@ type SSTableHeader struct {
 	SummaryStartOffset     uint64
 	BloomFilterStartOffset uint64
 	MerkleStartOffset      uint64
+	NumberOfItems          uint64
 }
 
 func FlushToSSTable(
@@ -54,6 +55,7 @@ func FlushToSSTable(
 		SummaryStartOffset:     0,
 		BloomFilterStartOffset: 0,
 		MerkleStartOffset:      0,
+		NumberOfItems:          uint64(len(items)),
 	}
 
 	// Loop through the items and add them to the segments
@@ -388,6 +390,8 @@ func (header *SSTableHeader) SerializeToBytes() []byte {
 	result = append(result, serialization.UInt64ToBytes(header.BloomFilterStartOffset)...)
 	// MerkleStartOffset
 	result = append(result, serialization.UInt64ToBytes(header.MerkleStartOffset)...)
+	// NumberOfItems
+	result = append(result, serialization.UInt64ToBytes(header.NumberOfItems)...)
 
 	return result
 }
@@ -397,4 +401,5 @@ func (header *SSTableHeader) DeserializeFromBytes(data []byte) {
 	header.SummaryStartOffset = serialization.BytesToUInt64(data[8:16])
 	header.BloomFilterStartOffset = serialization.BytesToUInt64(data[16:24])
 	header.MerkleStartOffset = serialization.BytesToUInt64(data[24:32])
+	header.NumberOfItems = serialization.BytesToUInt64(data[32:40])
 }

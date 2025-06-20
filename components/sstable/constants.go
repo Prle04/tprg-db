@@ -17,5 +17,5 @@ const (
 	SegmentBlockSize uint64 = 512
 	PaddingThreshold uint64 = 32
 
-	SSTableHeaderSize uint64 = 32 // Size of the SSTable header in bytes 
+	SSTableHeaderSize uint64 = 40 // Size of the SSTable header in bytes
 )

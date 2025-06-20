@@ -82,7 +82,7 @@ func main() {
 	// setupTestDir()
 	// defer cleanupTestDir()
 
-	data := getData(100)
+	data := getData(150)
 
 	// Convert []*testItem to []sstable.SSTableItem
 	items := make([]sstable.SSTableItem, len(data))
@@ -95,13 +95,19 @@ func main() {
 		return items[i].GetKey() < items[j].GetKey()
 	})
 
-	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "one-file", BM)
+	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "multi-file", BM)
 	if err != nil {
 		panic("failed to create SSTable: " + err.Error())
 	}
 
 	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
 
+	n, err := reader.GetNumberOfItems()
+	if err != nil {
+		panic("failed to get number of items: " + err.Error())
+	}
+
+	fmt.Printf("SSTable created with %d items.\n", n)
 	for {
 		var input string
 		fmt.Print("Enter a key to search (or 'q' to quit): ")
