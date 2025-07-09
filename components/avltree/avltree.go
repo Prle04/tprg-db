@@ -13,10 +13,26 @@ type Node struct {
 	rightChild *Node
 }
 
+type Data struct {
+	key   string
+	value int
+}
 
+func (d *Data) GetKey() string {
+	return d.key
+}
 
+func (d *Data) GetValue() int {
+	return d.value
+}
 
-// Dodaj broj elemenata
+func createData(key string, value int) *Data {
+	return &Data{
+		key:   key,
+		value: value,
+	}
+}
+
 type AVLTree struct {
 	root *Node
 }
@@ -178,9 +194,8 @@ func (tree *AVLTree) PostOrder() {
 	fmt.Println()
 }
 
-// Ne vracaj []int već []{key, value}
-func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []int {
-	var result []int
+func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []*Data {
+	var result []*Data
 	lowerBound := prefix
 	upperBound := prefix + "\uffff"
 
@@ -200,7 +215,8 @@ func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []int {
 		if n.key >= lowerBound && n.key <= upperBound {
 			if strings.HasPrefix(n.key, prefix) {
 				if count >= startIndex {
-					result = append(result, n.value)
+					newData := createData(n.key, n.value)
+					result = append(result, newData)
 				}
 				if len(result) == perPage {
 					return
@@ -218,9 +234,8 @@ func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []int {
 	return result
 }
 
-// Ne vracaj []int već []{key, value}
-func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []int {
-	var result []int
+func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
+	var result []*Data
 	var scan func(n *Node)
 
 	startIndex := (page - 1) * perPage
@@ -236,7 +251,8 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []int {
 		}
 		if n.key >= from && n.key <= to {
 			if count >= startIndex {
-				result = append(result, n.value)
+				newData := createData(n.key, n.value)
+				result = append(result, newData)
 			}
 			if len(result) == perPage {
 				return
@@ -252,7 +268,6 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []int {
 	return result
 }
 
-//Ne treba mi kurcu nego mi bilo zabano da pisem
 func (tree *AVLTree) Find(key string) *Node {
-	return find(tree.root,key)
+	return find(tree.root, key)
 }
