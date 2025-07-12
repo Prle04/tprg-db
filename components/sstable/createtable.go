@@ -16,6 +16,10 @@ type SSTableItem interface {
 	IsDeleted() bool
 }
 
+type SSTableIterator interface {
+	Next() (SSTableItem, error)
+}
+
 type SSTableHeader struct {
 	IndexStartOffset       uint64
 	SummaryStartOffset     uint64
@@ -25,7 +29,8 @@ type SSTableHeader struct {
 }
 
 func FlushToSSTable(
-	items []SSTableItem,
+	iterator SSTableIterator,
+	numberOfItems uint64,
 	folderPath string,
 	tableName string,
 	summaryDilutionFactor uint8,
@@ -33,14 +38,24 @@ func FlushToSSTable(
 	manager *blockmanager.BlockManager,
 ) error {
 
+	// Check if the folder exists, create it if it doesn't
+	if folderPath != "" {
+		if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+			err := os.MkdirAll(folderPath, 0o755)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	if mode != "one-file" && mode != "multi-file" {
 		return &IncorrectModeError{mode: mode}
 	}
 	path := ospath.Join(folderPath, tableName)
 
 	// Create the SSTable Segments
-	bloomfilter := bloomfilter.NewBloomFilter(len(items), 0.001)
-	index := make(SSTableIndex, len(items))
+	bloomfilter := bloomfilter.NewBloomFilter(int(numberOfItems), 0.001)
+	index := make(SSTableIndex, numberOfItems)
 	merkleBuilder := merkletree.NewMerkleTreeBuilder()
 	// Segment represents a block of data in the SSTable that will be a leaf in the Merkle tree
 	buffer := newSSTableBlock()
@@ -55,11 +70,12 @@ func FlushToSSTable(
 		SummaryStartOffset:     0,
 		BloomFilterStartOffset: 0,
 		MerkleStartOffset:      0,
-		NumberOfItems:          uint64(len(items)),
+		NumberOfItems:          numberOfItems,
 	}
 
 	// Loop through the items and add them to the segments
-	for i, item := range items {
+	i := uint64(0)
+	for item, err := iterator.Next(); err == nil; item, err = iterator.Next() {
 
 		// Get the key and value from the item
 		key := item.GetKey()
@@ -73,6 +89,7 @@ func FlushToSSTable(
 			Key:    key,
 			Offset: currentOffset,
 		}
+		i++
 
 		// Will be used to calculate the lenght in bytes
 		// that this item will take in the data file
@@ -123,7 +140,8 @@ func FlushToSSTable(
 				// Clear the buffer for the next write
 				buffer.clear()
 				// We know that the record is not last fragment so we set the type to middle or first depending on the previous record
-				isContinuance = true
+				isContinuance = len(remaining) < len(value) // If the remaining value is smaller than the original value, it means that we are continuing a previous record
+				// If the remaining value has the same size as the original value, it means that we hit the padding threshold
 				// Set the remaining value to the value that did not fit in the buffer
 				// and continue the loop to add it to the next buffer
 				value = remaining

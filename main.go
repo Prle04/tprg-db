@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/sstable"
@@ -15,23 +17,23 @@ var testDir string = "test-temp"
 
 var BM = blockmanager.NewBlockManager(2048, 128)
 
-func setupTestDir() {
-	testDir = filepath.Join("test-temp")
-	err := os.Mkdir(testDir, 0o755)
-	if err != nil {
-		panic(err.Error())
-	}
-}
+// func setupTestDir() {
+// 	testDir = filepath.Join("test-temp")
+// 	err := os.Mkdir(testDir, 0o755)
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+// }
 
-func cleanupTestDir() {
-	if testDir != "" {
-		err := os.RemoveAll(testDir)
-		if err != nil {
-			panic("failed to remove test dir: " + err.Error())
-		}
-		testDir = ""
-	}
-}
+// func cleanupTestDir() {
+// 	if testDir != "" {
+// 		err := os.RemoveAll(testDir)
+// 		if err != nil {
+// 			panic("failed to remove test dir: " + err.Error())
+// 		}
+// 		testDir = ""
+// 	}
+// }
 
 type testItem struct {
 	key   string
@@ -44,7 +46,7 @@ func (item testItem) GetKey() string {
 }
 
 func (item testItem) GetValue() []byte {
-	return item.value
+	return []byte(strings.Repeat(item.key, 100))
 	// length := rand.Intn(100) + 1 // Random length between 1 and 100
 	// str := randomString(length)
 	// return []byte(str)
@@ -58,14 +60,14 @@ func (item testItem) IsDeleted() bool {
 	return rand.Intn(2) == 0 // Randomly return true or false
 }
 
-func randomString(n int) string {
-	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
+// func randomString(n int) string {
+// 	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+// 	b := make([]rune, n)
+// 	for i := range b {
+// 		b[i] = letters[rand.Intn(len(letters))]
+// 	}
+// 	return string(b)
+// }
 
 func getData(n int) []*testItem {
 	items := make([]*testItem, n)
@@ -76,6 +78,20 @@ func getData(n int) []*testItem {
 		}
 	}
 	return items
+}
+
+type testSSTableIterator struct {
+	items []sstable.SSTableItem
+	index int
+}
+
+func (iter *testSSTableIterator) Next() (sstable.SSTableItem, error) {
+	if iter.index >= len(iter.items) {
+		return nil, errors.New("kraj") // No more items
+	}
+	item := iter.items[iter.index]
+	iter.index++
+	return item, nil
 }
 
 func main() {
@@ -95,10 +111,21 @@ func main() {
 		return items[i].GetKey() < items[j].GetKey()
 	})
 
-	err := sstable.FlushToSSTable(items, testDir, "test-table", 10, "multi-file", BM)
-	if err != nil {
-		panic("failed to create SSTable: " + err.Error())
-	}
+	// Create a test SSTable iterator
+	// iterator := &testSSTableIterator{
+	// 	items: items,
+	// 	index: 0,
+	// }
+
+	// err := sstable.FlushToSSTable(iterator, uint64(len(items)), testDir, "test-table", 10, "one-file", BM)
+	// if err != nil {
+	// 	panic("failed to create SSTable: " + err.Error())
+	// }
+
+	test := []byte{0b11100101, 0b00000011}
+	readerForUvarint := bytes.NewReader(test)
+	r, _ := binary.ReadUvarint(readerForUvarint)
+	fmt.Printf("Read Uvarint: %d\n", r)
 
 	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
 
@@ -133,3 +160,14 @@ func main() {
 	}
 
 }
+
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
+// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10

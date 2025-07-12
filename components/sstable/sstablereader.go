@@ -8,7 +8,7 @@ import (
 	"tprgdb/components/bloomfilter"
 )
 
-type SSTable struct {
+type SSTableReader struct {
 	header   *SSTableHeader
 	filter   *bloomfilter.BloomFilter
 	summary  *SSTableSummary
@@ -26,13 +26,19 @@ type SSItem struct {
 	Timestamp uint64
 }
 
+type SSIterator struct {
+	file               *blockmanager.BlockedFile
+	numberOfReadItems  uint64
+	totalNumberOfItems uint64
+}
+
 func NewSSTableReader(
 	folderPath string,
 	tableName string,
 	manager *blockmanager.BlockManager,
-) *SSTable {
+) *SSTableReader {
 	path := ospath.Join(folderPath, tableName)
-	table := &SSTable{
+	table := &SSTableReader{
 		filePath: path,
 		manager:  manager,
 		index:    nil,
@@ -63,7 +69,7 @@ func NewSSTableReader(
 	return table
 }
 
-func (s *SSTable) Get(key string) (*SSItem, error) {
+func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	filter, err := s.getBloomFilter()
 	if err != nil {
 		return nil, err
@@ -152,13 +158,13 @@ func (s *SSTable) Get(key string) (*SSItem, error) {
 			}
 			result.Value = append(result.Value, record.value...)
 		}
+		return result, nil
 	default:
 		return nil, &NotFirstFragment{fragmentType: record.recordType}
 	}
-	return result, nil
 }
 
-func (s *SSTable) GetNumberOfItems() (uint64, error) {
+func (s *SSTableReader) GetNumberOfItems() (uint64, error) {
 	header, err := s.getHeader()
 	if err != nil {
 		return 0, err
@@ -166,7 +172,7 @@ func (s *SSTable) GetNumberOfItems() (uint64, error) {
 	return header.NumberOfItems, nil
 }
 
-// func (s *SSTable) getTOC() ([]string, error) {
+// func (s *SSTableReader) getTOC() ([]string, error) {
 // 	if s.toc != nil {
 // 		return s.toc, nil
 // 	}
@@ -183,7 +189,7 @@ func (s *SSTable) GetNumberOfItems() (uint64, error) {
 // 	return toc, nil
 // }
 
-func (s *SSTable) getHeader() (*SSTableHeader, error) {
+func (s *SSTableReader) getHeader() (*SSTableHeader, error) {
 	if s.header != nil {
 		return s.header, nil
 	}
@@ -195,7 +201,7 @@ func (s *SSTable) getHeader() (*SSTableHeader, error) {
 	return header, nil
 }
 
-func (s *SSTable) getBloomFilter() (*bloomfilter.BloomFilter, error) {
+func (s *SSTableReader) getBloomFilter() (*bloomfilter.BloomFilter, error) {
 	if s.filter != nil {
 		return s.filter, nil
 	}
@@ -207,7 +213,7 @@ func (s *SSTable) getBloomFilter() (*bloomfilter.BloomFilter, error) {
 	return filter, nil
 }
 
-func (s *SSTable) getSummary() (*SSTableSummary, error) {
+func (s *SSTableReader) getSummary() (*SSTableSummary, error) {
 	if s.summary != nil {
 		return s.summary, nil
 	}
@@ -219,7 +225,7 @@ func (s *SSTable) getSummary() (*SSTableSummary, error) {
 	return summary, nil
 }
 
-func (s *SSTable) loadBloomFilter() (*bloomfilter.BloomFilter, error) {
+func (s *SSTableReader) loadBloomFilter() (*bloomfilter.BloomFilter, error) {
 
 	filter := bloomfilter.NewEmptyBloomFilter()
 	if s.mode == "one-file" {
@@ -247,7 +253,7 @@ func (s *SSTable) loadBloomFilter() (*bloomfilter.BloomFilter, error) {
 	return filter, nil
 }
 
-func (s *SSTable) loadTOC() ([]string, error) {
+func (s *SSTableReader) loadTOC() ([]string, error) {
 
 	data, err := os.ReadFile(s.filePath + "-toc.txt")
 	if err != nil {
@@ -288,7 +294,7 @@ func (s *SSTable) loadTOC() ([]string, error) {
 	// return lines, nil
 }
 
-func (s *SSTable) loadHeader() (*SSTableHeader, error) {
+func (s *SSTableReader) loadHeader() (*SSTableHeader, error) {
 	dataFile := s.manager.OpenBlockedFile(s.filePath + "-data.db")
 	headerData, err := dataFile.Read(SSTableHeaderSize)
 	if err != nil {
@@ -299,7 +305,7 @@ func (s *SSTable) loadHeader() (*SSTableHeader, error) {
 	return s.header, nil
 }
 
-func (s *SSTable) loadSummary() (*SSTableSummary, error) {
+func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 	s.summary = &SSTableSummary{}
 	header, err := s.getHeader()
 	if err != nil {
@@ -354,4 +360,58 @@ func (s *SSTable) loadSummary() (*SSTableSummary, error) {
 		summaryFile.Close()
 	}
 	return s.summary, nil
+}
+
+func (s *SSTableReader) GetIterator() (*SSIterator, error) {
+	file := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+	header, err := s.getHeader()
+	if err != nil {
+		return nil, err
+	}
+	file.Seek(SSTableHeaderSize) // Skip the header
+	return &SSIterator{
+		file:               file,
+		numberOfReadItems:  0,
+		totalNumberOfItems: header.NumberOfItems,
+	}, nil
+}
+
+func (it *SSIterator) Next() (*SSItem, error) {
+	if it.numberOfReadItems >= it.totalNumberOfItems {
+		return nil, blockmanager.EOF // No more items to read
+	}
+	record := &sstablerecord{}
+	err := record.read(it.file)
+	if err != nil {
+		return nil, err
+	}
+	item := &SSItem{
+		Key:       record.key,
+		Value:     record.value,
+		Tombstone: record.tombstone,
+		Timestamp: record.timestamp,
+	}
+	it.numberOfReadItems++
+	return item, nil
+}
+
+func (it *SSIterator) Reset() {
+	it.file.Seek(SSTableHeaderSize) // Reset to the start of the data file after the header
+	it.numberOfReadItems = 0
+}
+
+func (item *SSItem) GetKey() string {
+	return item.Key
+}
+
+func (item *SSItem) GetValue() []byte {
+	return item.Value
+}
+
+func (item *SSItem) IsDeleted() bool {
+	return item.Tombstone
+}
+
+func (item *SSItem) GetTimestamp() uint64 {
+	return item.Timestamp
 }
