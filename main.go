@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -81,11 +79,11 @@ func getData(n int) []*testItem {
 }
 
 type testSSTableIterator struct {
-	items []sstable.SSTableItem
+	items []sstable.ISSTableItem
 	index int
 }
 
-func (iter *testSSTableIterator) Next() (sstable.SSTableItem, error) {
+func (iter *testSSTableIterator) Next() (sstable.ISSTableItem, error) {
 	if iter.index >= len(iter.items) {
 		return nil, errors.New("kraj") // No more items
 	}
@@ -94,14 +92,43 @@ func (iter *testSSTableIterator) Next() (sstable.SSTableItem, error) {
 	return item, nil
 }
 
+type compressionMockup struct {
+	compressed bool
+}
+
+func (c *compressionMockup) GetCompressied(s string) ([]byte, error) {
+	if !c.compressed {
+		return []byte(s), nil
+	}
+	// Mock compression: just reverse the string
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return []byte(string(runes)), nil
+}
+
+func (c *compressionMockup) GetDecompressied(u uint64) (string, error) {
+	// Mock decompression: just convert uint64 to string
+	return fmt.Sprintf("%d", u), nil
+}
+
+func (c *compressionMockup) IsCompressionEnabled() bool {
+	return c.compressed
+}
+
 func main() {
 	// setupTestDir()
 	// defer cleanupTestDir()
 
+	compressionManager := &compressionMockup{compressed: false}
+
+	sstableManger := sstable.NewSSTableManager(testDir, "one-file", 10, BM, compressionManager)
+
 	data := getData(150)
 
 	// Convert []*testItem to []sstable.SSTableItem
-	items := make([]sstable.SSTableItem, len(data))
+	items := make([]sstable.ISSTableItem, len(data))
 	for i, v := range data {
 		items[i] = v
 	}
@@ -112,22 +139,17 @@ func main() {
 	})
 
 	// Create a test SSTable iterator
-	// iterator := &testSSTableIterator{
-	// 	items: items,
-	// 	index: 0,
-	// }
+	iterator := &testSSTableIterator{
+		items: items,
+		index: 0,
+	}
 
-	// err := sstable.FlushToSSTable(iterator, uint64(len(items)), testDir, "test-table", 10, "one-file", BM)
-	// if err != nil {
-	// 	panic("failed to create SSTable: " + err.Error())
-	// }
+	_, err := sstableManger.CreateSSTable("test-table", iterator, uint64(len(items)))
+	if err != nil {
+		panic("failed to create SSTable: " + err.Error())
+	}
 
-	test := []byte{0b11100101, 0b00000011}
-	readerForUvarint := bytes.NewReader(test)
-	r, _ := binary.ReadUvarint(readerForUvarint)
-	fmt.Printf("Read Uvarint: %d\n", r)
-
-	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
+	reader := sstableManger.NewSSTableReader("test-table")
 
 	n, err := reader.GetNumberOfItems()
 	if err != nil {
@@ -160,14 +182,3 @@ func main() {
 	}
 
 }
-
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10
-// key-10key-10key-10key-10key-10key-10key-10key-10key-10key-10

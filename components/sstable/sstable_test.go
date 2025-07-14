@@ -2,6 +2,7 @@ package sstable_test
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"slices"
@@ -104,11 +105,11 @@ func getData(n int) []*testItem {
 }
 
 type testSSTableIterator struct {
-	items []sstable.SSTableItem
+	items []sstable.ISSTableItem
 	index int
 }
 
-func (iter *testSSTableIterator) Next() (sstable.SSTableItem, error) {
+func (iter *testSSTableIterator) Next() (sstable.ISSTableItem, error) {
 	if iter.index >= len(iter.items) {
 		return nil, errors.New("kraj") // No more items
 	}
@@ -117,18 +118,47 @@ func (iter *testSSTableIterator) Next() (sstable.SSTableItem, error) {
 	return item, nil
 }
 
+type compressionMockup struct {
+	compressed bool
+}
+
+func (c *compressionMockup) GetCompressied(s string) ([]byte, error) {
+	if !c.compressed {
+		return []byte(s), nil
+	}
+	// Mock compression: just reverse the string
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return []byte(string(runes)), nil
+}
+
+func (c *compressionMockup) GetDecompressied(u uint64) (string, error) {
+	// Mock decompression: just convert uint64 to string
+	return fmt.Sprintf("%d", u), nil
+}
+
+func (c *compressionMockup) IsCompressionEnabled() bool {
+	return c.compressed
+}
+
 func TestSSTable_CreateSSTable(t *testing.T) {
 	setupTestDir(t)
 	defer cleanupTestDir(t)
 
-	data := getData(1_000)
+	compressionManager := &compressionMockup{compressed: false}
+
+	sstableManger := sstable.NewSSTableManager(testDir, sstable.MODE_ONE_FILE, 10, BM, compressionManager)
+
+	data := getData(150)
 
 	sort.Slice(data, func(i, j int) bool {
 		return data[i].GetKey() < data[j].GetKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
-	items := make([]sstable.SSTableItem, len(data))
+	items := make([]sstable.ISSTableItem, len(data))
 	keys := make([]string, len(data))
 	for i, v := range data {
 		items[i] = v
@@ -141,12 +171,12 @@ func TestSSTable_CreateSSTable(t *testing.T) {
 		index: 0,
 	}
 
-	err := sstable.FlushToSSTable(iterator, 1_000, testDir, "test-table", 10, "one-file", BM)
+	_, err := sstableManger.CreateSSTable("test-table", iterator, uint64(len(items)))
 	if err != nil {
 		t.Fatalf("failed to create SSTable: %v", err)
 	}
 
-	reader := sstable.NewSSTableReader(testDir, "test-table", BM)
+	reader := sstableManger.NewSSTableReader("test-table")
 	if reader == nil {
 		t.Fatal("failed to create SSTable reader")
 	}

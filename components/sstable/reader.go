@@ -9,51 +9,41 @@ import (
 )
 
 type SSTableReader struct {
-	header   *SSTableHeader
-	filter   *bloomfilter.BloomFilter
-	summary  *SSTableSummary
-	manager  *blockmanager.BlockManager
-	index    *SSTableIndex
-	toc      []string
-	filePath string
-	mode     string // "one-file" or "multi-file"
+	header             *SSTableHeader
+	filter             *bloomfilter.BloomFilter
+	summary            *SSTableSummary
+	blockManager       *blockmanager.BlockManager
+	compressionManager ICompressionManager
+	index              *SSTableIndex
+	toc                []string
+	filePath           string
+	mode               string // "one-file" or "multi-file"
 }
 
-type SSItem struct {
-	Key       string
-	Value     []byte
-	Tombstone bool
-	Timestamp uint64
-}
-
-type SSIterator struct {
-	file               *blockmanager.BlockedFile
-	numberOfReadItems  uint64
-	totalNumberOfItems uint64
-}
-
-func NewSSTableReader(
+func newSSTableReader(
 	folderPath string,
 	tableName string,
-	manager *blockmanager.BlockManager,
+	blockManager *blockmanager.BlockManager,
+	compressionManager ICompressionManager,
 ) *SSTableReader {
 	path := ospath.Join(folderPath, tableName)
 	table := &SSTableReader{
-		filePath: path,
-		manager:  manager,
-		index:    nil,
-		header:   nil,
-		filter:   nil,
-		summary:  nil,
-		toc:      nil,
+		filePath:           path,
+		blockManager:       blockManager,
+		compressionManager: compressionManager,
+		index:              nil,
+		header:             nil,
+		filter:             nil,
+		summary:            nil,
+		toc:                nil,
 	}
 	toc, err := table.loadTOC()
 	if err == nil {
 		table.toc = toc
 		if len(toc) == 1 {
-			table.mode = "one-file"
+			table.mode = MODE_ONE_FILE
 		} else {
-			table.mode = "multi-file"
+			table.mode = MODE_MULTI_FILE
 		}
 	}
 	header, err := table.loadHeader()
@@ -61,15 +51,21 @@ func NewSSTableReader(
 		table.header = header
 		if header.IndexStartOffset == 0 && header.BloomFilterStartOffset == 0 && header.SummaryStartOffset == 0 && header.MerkleStartOffset == 0 {
 			// If all offsets are zero, it indicates that segments are in separate files
-			table.mode = "multi-file"
+			table.mode = MODE_MULTI_FILE
 		}
 	} else {
-		table.mode = "one-file"
+		table.mode = MODE_ONE_FILE // Default to one-file mode if header cannot be loaded
 	}
 	return table
 }
 
 func (s *SSTableReader) Get(key string) (*SSItem, error) {
+
+	defer func(ss *SSTableReader) {
+		ss.filter = nil  // Reset the filter to avoid unnecessary reads
+		ss.summary = nil // Reset the summary to avoid unnecessary reads
+	}(s)
+
 	filter, err := s.getBloomFilter()
 	if err != nil {
 		return nil, err
@@ -77,6 +73,7 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	if filter.IsNotIn([]byte(key)) {
 		return nil, nil // Key is not in the Bloom filter, hence not in the SSTable
 	}
+
 	summary, err := s.getSummary()
 	if err != nil {
 		return nil, err
@@ -99,13 +96,13 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	var indexFile *blockmanager.BlockedFile
 	// Offset in the index file where the item starts
 	var offset uint64
-	if s.mode == "one-file" {
+	if s.mode == MODE_ONE_FILE {
 		// mode is "one-file"
-		indexFile = s.manager.OpenBlockedFile(s.filePath + "-data.db")
+		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 		offset = current.Offset + header.IndexStartOffset // Total offset in the data file
 	} else {
 		// mode is "multi-file"
-		indexFile = s.manager.OpenBlockedFile(s.filePath + "-index.db")
+		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-index.db")
 		offset = current.Offset
 	}
 	// Seek to the offset in the index file
@@ -127,7 +124,7 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 		}
 	}
 
-	valueFile := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+	valueFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 	valueFile.Seek(item.Offset + SSTableHeaderSize) // Seek to the value offset in the data file
 	result := &SSItem{
 		Key:       item.Key,
@@ -172,23 +169,6 @@ func (s *SSTableReader) GetNumberOfItems() (uint64, error) {
 	return header.NumberOfItems, nil
 }
 
-// func (s *SSTableReader) getTOC() ([]string, error) {
-// 	if s.toc != nil {
-// 		return s.toc, nil
-// 	}
-// 	toc, err := s.loadTOC()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	s.toc = toc
-// 	if len(toc) == 1 {
-// 		s.mode = "one-file"
-// 	} else {
-// 		s.mode = "multi-file"
-// 	}
-// 	return toc, nil
-// }
-
 func (s *SSTableReader) getHeader() (*SSTableHeader, error) {
 	if s.header != nil {
 		return s.header, nil
@@ -228,10 +208,10 @@ func (s *SSTableReader) getSummary() (*SSTableSummary, error) {
 func (s *SSTableReader) loadBloomFilter() (*bloomfilter.BloomFilter, error) {
 
 	filter := bloomfilter.NewEmptyBloomFilter()
-	if s.mode == "one-file" {
+	if s.mode == MODE_ONE_FILE {
 		// mode is "one-file"
 		header := &SSTableHeader{}
-		dataFile := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+		dataFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 		headerData, err := dataFile.Read(SSTableHeaderSize)
 		if err != nil {
 			return nil, err
@@ -244,7 +224,7 @@ func (s *SSTableReader) loadBloomFilter() (*bloomfilter.BloomFilter, error) {
 		}
 	} else {
 		// mode is "multi-file"
-		bloomFile := s.manager.OpenBlockedFile(s.filePath + "-filter.db")
+		bloomFile := s.blockManager.OpenBlockedFile(s.filePath + "-filter.db")
 		err := filter.DeserializeFromFile(bloomFile)
 		if err != nil {
 			return nil, err
@@ -295,7 +275,7 @@ func (s *SSTableReader) loadTOC() ([]string, error) {
 }
 
 func (s *SSTableReader) loadHeader() (*SSTableHeader, error) {
-	dataFile := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+	dataFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 	headerData, err := dataFile.Read(SSTableHeaderSize)
 	if err != nil {
 		return nil, err
@@ -312,8 +292,8 @@ func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 		return nil, err
 	}
 
-	if s.mode == "one-file" {
-		dataFile := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+	if s.mode == MODE_ONE_FILE {
+		dataFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 		dataFile.Seek(header.SummaryStartOffset)
 		s.summary.minKey = &SSTableIndexItem{}
 		err = s.summary.minKey.DeserializeFromFile(dataFile)
@@ -335,7 +315,7 @@ func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 		}
 		dataFile.Close()
 	} else {
-		summaryFile := s.manager.OpenBlockedFile(s.filePath + "-summary.db")
+		summaryFile := s.blockManager.OpenBlockedFile(s.filePath + "-summary.db")
 		s.summary.minKey = &SSTableIndexItem{}
 		err = s.summary.minKey.DeserializeFromFile(summaryFile)
 		if err != nil {
@@ -362,8 +342,8 @@ func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 	return s.summary, nil
 }
 
-func (s *SSTableReader) GetIterator() (*SSIterator, error) {
-	file := s.manager.OpenBlockedFile(s.filePath + "-data.db")
+func (s *SSTableReader) GetIterator() (ISSTableIterator, error) {
+	file := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 	header, err := s.getHeader()
 	if err != nil {
 		return nil, err
@@ -374,44 +354,4 @@ func (s *SSTableReader) GetIterator() (*SSIterator, error) {
 		numberOfReadItems:  0,
 		totalNumberOfItems: header.NumberOfItems,
 	}, nil
-}
-
-func (it *SSIterator) Next() (*SSItem, error) {
-	if it.numberOfReadItems >= it.totalNumberOfItems {
-		return nil, blockmanager.EOF // No more items to read
-	}
-	record := &sstablerecord{}
-	err := record.read(it.file)
-	if err != nil {
-		return nil, err
-	}
-	item := &SSItem{
-		Key:       record.key,
-		Value:     record.value,
-		Tombstone: record.tombstone,
-		Timestamp: record.timestamp,
-	}
-	it.numberOfReadItems++
-	return item, nil
-}
-
-func (it *SSIterator) Reset() {
-	it.file.Seek(SSTableHeaderSize) // Reset to the start of the data file after the header
-	it.numberOfReadItems = 0
-}
-
-func (item *SSItem) GetKey() string {
-	return item.Key
-}
-
-func (item *SSItem) GetValue() []byte {
-	return item.Value
-}
-
-func (item *SSItem) IsDeleted() bool {
-	return item.Tombstone
-}
-
-func (item *SSItem) GetTimestamp() uint64 {
-	return item.Timestamp
 }

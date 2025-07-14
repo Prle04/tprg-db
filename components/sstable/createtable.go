@@ -3,21 +3,22 @@ package sstable
 import (
 	"os"
 	ospath "path"
+	"strings"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/bloomfilter"
 	"tprgdb/components/merkletree"
 	"tprgdb/components/serialization"
 )
 
-type SSTableItem interface {
+type ISSTableItem interface {
 	GetKey() string
 	GetValue() []byte
 	GetTimestamp() uint64
 	IsDeleted() bool
 }
 
-type SSTableIterator interface {
-	Next() (SSTableItem, error)
+type ISSTableIterator interface {
+	Next() (ISSTableItem, error)
 }
 
 type SSTableHeader struct {
@@ -26,36 +27,38 @@ type SSTableHeader struct {
 	BloomFilterStartOffset uint64
 	MerkleStartOffset      uint64
 	NumberOfItems          uint64
+	IsCompressionEnabled   bool
 }
 
-func FlushToSSTable(
-	iterator SSTableIterator,
-	numberOfItems uint64,
+func flushToSSTable(
+	iterator ISSTableIterator,
+	maximumNumberOfItems uint64,
 	folderPath string,
 	tableName string,
 	summaryDilutionFactor uint8,
 	mode string,
+	compressionManager ICompressionManager,
 	manager *blockmanager.BlockManager,
-) error {
+) (*SSTableReader, error) {
 
 	// Check if the folder exists, create it if it doesn't
 	if folderPath != "" {
 		if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 			err := os.MkdirAll(folderPath, 0o755)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
-	if mode != "one-file" && mode != "multi-file" {
-		return &IncorrectModeError{mode: mode}
+	if mode != MODE_ONE_FILE && mode != MODE_MULTI_FILE {
+		return nil, &IncorrectModeError{mode: mode}
 	}
 	path := ospath.Join(folderPath, tableName)
 
 	// Create the SSTable Segments
-	bloomfilter := bloomfilter.NewBloomFilter(int(numberOfItems), 0.001)
-	index := make(SSTableIndex, numberOfItems)
+	bloomfilter := bloomfilter.NewBloomFilter(int(maximumNumberOfItems), 0.001)
+	index := make(SSTableIndex, maximumNumberOfItems)
 	merkleBuilder := merkletree.NewMerkleTreeBuilder()
 	// Segment represents a block of data in the SSTable that will be a leaf in the Merkle tree
 	buffer := newSSTableBlock()
@@ -70,11 +73,11 @@ func FlushToSSTable(
 		SummaryStartOffset:     0,
 		BloomFilterStartOffset: 0,
 		MerkleStartOffset:      0,
-		NumberOfItems:          numberOfItems,
+		NumberOfItems:          0,
+		IsCompressionEnabled:   compressionManager.IsCompressionEnabled(),
 	}
 
 	// Loop through the items and add them to the segments
-	i := uint64(0)
 	for item, err := iterator.Next(); err == nil; item, err = iterator.Next() {
 
 		// Get the key and value from the item
@@ -85,11 +88,11 @@ func FlushToSSTable(
 		bloomfilter.Insert([]byte(key))
 
 		// Add the key to the Index
-		index[i] = &SSTableIndexItem{
+		index[header.NumberOfItems] = &SSTableIndexItem{
 			Key:    key,
 			Offset: currentOffset,
 		}
-		i++
+		header.NumberOfItems++
 
 		// Will be used to calculate the lenght in bytes
 		// that this item will take in the data file
@@ -102,7 +105,7 @@ func FlushToSSTable(
 			for {
 				ok, err := buffer.delete(dataFile, key, item.GetTimestamp())
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if ok {
 					break
@@ -127,7 +130,7 @@ func FlushToSSTable(
 				// add the data to the current buffer and get the remaining data for which no space was available
 				remaining, err := buffer.add(dataFile, key, value, item.GetTimestamp(), isContinuance)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				// The whole value fitted in the buffer
 				if remaining == nil {
@@ -164,16 +167,17 @@ func FlushToSSTable(
 	// Now that we have completed writting all items to data segments
 	// we can write other segments of the SSTable
 	// Depending on the mode, they will be written to different files
-	if mode == "one-file" {
+	if mode == MODE_ONE_FILE {
 		// We will write everything to the same file
 		header.IndexStartOffset = dataFile.Tell()
 		currentOffset = 0                // reset the current offset for the index
 		summary := make(SSTableIndex, 0) // create a summary of the index
 
 		// Loop through the index and write it to the file
-		for i, item := range index {
+		for i := range header.NumberOfItems {
+			item := index[i]
 			// Every summaryDilutionFactor-th item will be added to the summary
-			if i%int(summaryDilutionFactor) == 0 {
+			if i%uint64(summaryDilutionFactor) == 0 {
 				summary = append(summary, &SSTableIndexItem{
 					Key:    item.Key,
 					Offset: currentOffset,
@@ -183,7 +187,7 @@ func FlushToSSTable(
 			data := item.getData()
 			err := dataFile.Write(data)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			// Update the current offset in the data file
 			currentOffset += uint64(len(data))
@@ -193,52 +197,63 @@ func FlushToSSTable(
 		// First we write the first and last item of the index so we have range of the whole table
 		err := dataFile.Write(index[0].getData()) // Write the first item of the index as a summary
 		if err != nil {
-			return err
+			return nil, err
 		}
-		err = dataFile.Write(index[len(index)-1].getData()) // Write the last item of the index as a summary
+		err = dataFile.Write(index[header.NumberOfItems-1].getData()) // Write the last item of the index as a summary
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Now we write the summary items
 		for _, item := range summary {
 			data := item.getData()
 			err := dataFile.Write(data)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 		// Write the bloom filter to the file
 		header.BloomFilterStartOffset = dataFile.Tell()
 		err = bloomfilter.SerializeToFile(dataFile)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Write the Merkle tree to the file
 		header.MerkleStartOffset = dataFile.Tell()
 		merkleTree := merkleBuilder.Build()
 		if merkleTree == nil {
-			return &EmptyMerkleTreeError{}
+			return nil, &EmptyMerkleTreeError{}
 		}
 		err = merkleTree.SerializeToFile(dataFile)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Write the SSTable header to the beginning of the file
 		dataFile.Seek(0)
 		headerData := header.SerializeToBytes()
 		err = dataFile.Write(headerData)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Close the data file
 		err = dataFile.Close()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Write the table of contents for this SSTable
 
 		err = os.WriteFile(path+"-toc.txt", []byte(path+"-data.db\n"), 0o644)
-		return err
+		reader := &SSTableReader{
+			filePath:           path,
+			mode:               mode, // "one-file" or "multi-file"
+			header:             header,
+			blockManager:       manager,
+			compressionManager: compressionManager,
+			toc:                []string{path + "-data.db\n"},
+			filter:             nil,
+			summary:            nil,
+			index:              nil,
+		}
+		return reader, err
 	}
 	// The mode is "multi-file", we will write the index, bloom filter and Merkle tree to separate files
 
@@ -247,12 +262,12 @@ func FlushToSSTable(
 	headerData := header.SerializeToBytes()
 	err := dataFile.Write(headerData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Close the data file
 	err = dataFile.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	indexFile := manager.OpenBlockedFile(path + "-index.db")
@@ -266,11 +281,11 @@ func FlushToSSTable(
 	// so we have range of the whole table
 	err = summaryFile.Write(index[0].getData()) // Write the first item of the index as a summary
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = summaryFile.Write(index[len(index)-1].getData()) // Write the last item of the index as a summary
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Loop through the index and write it to the file
@@ -283,14 +298,14 @@ func FlushToSSTable(
 				Offset: currentOffset,
 			}).getData())
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 		// Write the index item to the file
 		data := item.getData()
 		err := indexFile.Write(data)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Update the current offset for the index
 		currentOffset += uint64(len(data))
@@ -298,99 +313,57 @@ func FlushToSSTable(
 	// Write the bloom filter to the file
 	err = bloomfilter.SerializeToFile(bloomFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Write the Merkle tree to the file
 	merkleTree := merkleBuilder.Build()
 	err = merkleTree.SerializeToFile(merkleFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Close all files
 	err = indexFile.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = summaryFile.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = bloomFile.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = merkleFile.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Write the table of contents for this SSTable
 
-	tocData := []byte(path + "-data.db\n" +
-		path + "-index.db\n" +
-		path + "-summary.db\n" +
-		path + "-filter.db\n" +
-		path + "-metadata.db\n")
+	tocArray := []string{
+		path + "-data.db",
+		path + "-index.db",
+		path + "-summary.db",
+		path + "-filter.db",
+		path + "-metadata.db",
+	}
+	tocData := []byte(strings.Join(tocArray, "\n") + "\n")
 	err = os.WriteFile(path+"-toc.txt", tocData, 0o644)
-	return err
-
+	reader := &SSTableReader{
+		filePath:           path,
+		mode:               mode, // "one-file" or "multi-file"
+		header:             header,
+		blockManager:       manager,
+		compressionManager: compressionManager,
+		toc:                tocArray,
+		filter:             nil,
+		summary:            nil,
+		index:              nil,
+	}
+	return reader, err
 }
-
-// type WALIterator struct {
-// 	Record *sstablerecord
-// 	Err    error
-// }
-
-// func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
-// 	ch := make(chan *WALIterator)
-// 	go func() {
-// 		defer close(ch)
-// 		wal.currentSegment.file.Sync()
-// 		entries, err := os.ReadDir(wal.walPath)
-// 		if err != nil {
-// 			ch <- &WALIterator{Err: err}
-// 			return
-// 		}
-// 		var lastRecord *sstablerecord = nil
-// 		for _, v := range entries {
-// 			if v.IsDir() {
-// 				continue
-// 			}
-// 			if filepath.Ext(v.Name()) != ".wal" && !strings.HasPrefix(v.Name(), "wal_") {
-// 				continue
-// 			}
-// 			filepath := path.Join(wal.walPath, v.Name())
-// 			file := wal.manager.OpenBlockedFile(filepath)
-// 			file.Seek(uint64(SegmentNumberSize))
-// 			for file.Tell() < wal.segmentSize*wal.blockSize {
-// 				record := &sstablerecord{}
-// 				err := record.read(file)
-// 				if err != nil {
-// 					ch <- &WALIterator{Err: err}
-// 					return
-// 				}
-// 				if record.recordType == FragmentTypePadding {
-// 					break
-// 				}
-// 				if record.recordType == FragmentTypeMiddle || record.recordType == FragmentTypeLast {
-// 					if lastRecord == nil {
-// 						ch <- &WALIterator{Err: &NotFirstFragment{fragmentType: record.recordType}}
-// 						return
-// 					}
-// 					lastRecord.value = append(lastRecord.value, record.value...)
-// 					if record.recordType == FragmentTypeLast {
-// 						ch <- &WALIterator{Record: lastRecord}
-// 						lastRecord = nil
-// 					}
-// 				} else {
-// 					lastRecord = record
-// 				}
-// 			}
-// 		}
-// 	}()
-// 	return ch
-// }
 
 func (header *SSTableHeader) SerializeToBytes() []byte {
 	// 8B - IndexStartOffset
@@ -410,7 +383,8 @@ func (header *SSTableHeader) SerializeToBytes() []byte {
 	result = append(result, serialization.UInt64ToBytes(header.MerkleStartOffset)...)
 	// NumberOfItems
 	result = append(result, serialization.UInt64ToBytes(header.NumberOfItems)...)
-
+	// IsCompressionEnabled
+	result = append(result, serialization.BoolToBytes(header.IsCompressionEnabled)...)
 	return result
 }
 
@@ -420,4 +394,5 @@ func (header *SSTableHeader) DeserializeFromBytes(data []byte) {
 	header.BloomFilterStartOffset = serialization.BytesToUInt64(data[16:24])
 	header.MerkleStartOffset = serialization.BytesToUInt64(data[24:32])
 	header.NumberOfItems = serialization.BytesToUInt64(data[32:40])
+	header.IsCompressionEnabled = serialization.BytesToBool(data[40:41])
 }
