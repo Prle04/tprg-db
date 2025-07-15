@@ -1,7 +1,6 @@
 package sstable_test
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -16,7 +15,7 @@ import (
 var BM = blockmanager.NewBlockManager(2048, 128)
 
 func setupTestDir(t *testing.T) string {
-	testDir := "test-temp" + randomString(5)
+	testDir := "test-temp-" + randomString(5)
 	err := os.Mkdir(testDir, 0o755)
 	if err != nil {
 		t.Fatalf("failed to create test dir: %v", err)
@@ -114,22 +113,13 @@ func getData(n int, compressionManager sstable.ICompressionManager) []*testItem 
 			Tombstone: nil,
 			CM:        compressionManager,
 		}
+		items[i].GetKey()           // Initialize key
+		items[i].GetValue()         // Initialize value
+		items[i].GetTimestamp()     // Initialize timestamp
+		items[i].GetCompressedKey() // Initialize compressed key
+		items[i].IsDeleted()        // Initialize tombstone
 	}
 	return items
-}
-
-type testSSTableIterator struct {
-	items []sstable.ISSTableItem
-	index int
-}
-
-func (iter *testSSTableIterator) Next() (sstable.ISSTableItem, error) {
-	if iter.index >= len(iter.items) {
-		return nil, errors.New("kraj") // No more items
-	}
-	item := iter.items[iter.index]
-	iter.index++
-	return item, nil
 }
 
 type compressionMockup struct {
@@ -149,9 +139,6 @@ func NewCompressionMockup(compressed bool) *compressionMockup {
 }
 
 func (c *compressionMockup) GetCompressed(s string) (uint64, error) {
-	if !c.compressed {
-		return 0, nil // No compression
-	}
 	if compressed, ok := c.s2i[s]; ok {
 		return compressed, nil
 	}
@@ -162,9 +149,6 @@ func (c *compressionMockup) GetCompressed(s string) (uint64, error) {
 }
 
 func (c *compressionMockup) GetDecompressed(u uint64) (string, error) {
-	if !c.compressed {
-		return "", nil // No compression
-	}
 	if decompressed, ok := c.i2s[u]; ok {
 		return decompressed, nil
 	}
@@ -173,6 +157,26 @@ func (c *compressionMockup) GetDecompressed(u uint64) (string, error) {
 
 func (c *compressionMockup) IsCompressionEnabled() bool {
 	return c.compressed
+}
+
+func generateItems(n int, compressionManager sstable.ICompressionManager) ([]sstable.ISSTableItem, []string) {
+	data := getData(n, compressionManager)
+
+	sort.Slice(data, func(i, j int) bool {
+		if !compressionManager.IsCompressionEnabled() {
+			return data[i].GetKey() < data[j].GetKey()
+		}
+		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
+	})
+
+	// Convert []*testItem to []sstable.SSTableItem
+	items := make([]sstable.ISSTableItem, len(data))
+	keys := make([]string, len(data))
+	for i, v := range data {
+		items[i] = v
+		keys[i] = v.GetKey()
+	}
+	return items, keys
 }
 
 func testCreate(t *testing.T, compression bool, mode string) {
@@ -201,10 +205,7 @@ func testCreate(t *testing.T, compression bool, mode string) {
 	}
 
 	// Create a test SSTable iterator
-	iterator := &testSSTableIterator{
-		items: items,
-		index: 0,
-	}
+	iterator := sstable.NewSSListIterator(items, compressionManager)
 
 	_, err := sstableManger.CreateSSTable("test-table", iterator, uint64(len(items)))
 	if err != nil {
@@ -266,6 +267,75 @@ func testCreate(t *testing.T, compression bool, mode string) {
 	}
 }
 
+func createTable(t *testing.T, compressionManager *compressionMockup, mode string, n int, testDir, tableName string) (*sstable.SSTableReader, []sstable.ISSTableItem, []string) {
+
+	sstableManger := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
+
+	items, keys := generateItems(n, compressionManager)
+
+	// Create a test SSTable iterator
+	iterator := sstable.NewSSListIterator(items, compressionManager)
+
+	reader, err := sstableManger.CreateSSTable(tableName, iterator, uint64(len(items)))
+	if err != nil {
+		t.Fatalf("failed to create SSTable: %v", err)
+	}
+	return reader, items, keys
+}
+
+func testIterator(t *testing.T, mode string, createCompressed, iterateCompressed bool) {
+	testDir := setupTestDir(t)
+	defer cleanupTestDir(t, testDir)
+
+	numberOfItems := 100
+	compressionManager := NewCompressionMockup(createCompressed)
+
+	_, _, keys := createTable(t, compressionManager, mode, numberOfItems, testDir, "test-table-iterator")
+
+	compressionManager.compressed = iterateCompressed
+
+	sstableManger := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
+
+	reader := sstableManger.NewSSTableReader("test-table-iterator")
+
+	if reader == nil {
+		t.Fatal("failed to create SSTable reader")
+	}
+
+	it, err := reader.GetIterator()
+	if err != nil {
+		t.Fatalf("failed to get iterator: %v", err)
+	}
+	if it == nil {
+		t.Fatal("failed to create SSTable iterator")
+	}
+
+	count := 0
+	for item, err := it.Next(); ; item, err = it.Next() {
+		if err == blockmanager.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("iterator error: %v", err)
+		}
+		count++
+		var key string
+		if reader.IsCompressed() {
+			key, _ = compressionManager.GetDecompressed(item.GetCompressedKey())
+		} else {
+			key = item.GetKey()
+		}
+		if key != keys[count-1] {
+			t.Fatalf("expected key %s, got %s", keys[count-1], key)
+		}
+	}
+	if count != numberOfItems {
+		t.Fatalf("expected %d items, got %d", numberOfItems, count)
+	}
+}
+
+// CREATE TABLE TESTS
+
 func TestCreateSSTableWithCompressionOneFile(t *testing.T) {
 	testCreate(t, true, sstable.MODE_ONE_FILE)
 }
@@ -277,4 +347,35 @@ func TestCreateSSTableWithoutCompression(t *testing.T) {
 }
 func TestCreateSSTableWithoutCompressionMultipleFiles(t *testing.T) {
 	testCreate(t, false, sstable.MODE_MULTI_FILE)
+}
+
+// ITERATOR TESTS
+
+func TestIterateWithout2WithoutOneFile(t *testing.T) {
+	testIterator(t, sstable.MODE_ONE_FILE, false, false)
+}
+func TestIterateWithout2WithOneFile(t *testing.T) {
+	testIterator(t, sstable.MODE_ONE_FILE, false, true)
+}
+
+func TestIterateWith2WithoutOneFile(t *testing.T) {
+	testIterator(t, sstable.MODE_ONE_FILE, true, false)
+}
+
+func TestIterateWith2WithOneFile(t *testing.T) {
+	testIterator(t, sstable.MODE_ONE_FILE, true, true)
+}
+
+func TestIterateWithout2WithoutMultiFile(t *testing.T) {
+	testIterator(t, sstable.MODE_MULTI_FILE, false, false)
+}
+
+func TestIterateWithout2WithMultiFile(t *testing.T) {
+	testIterator(t, sstable.MODE_MULTI_FILE, false, true)
+}
+func TestIterateWith2WithoutMultiFile(t *testing.T) {
+	testIterator(t, sstable.MODE_MULTI_FILE, true, false)
+}
+func TestIterateWith2WithMultiFile(t *testing.T) {
+	testIterator(t, sstable.MODE_MULTI_FILE, true, true)
 }

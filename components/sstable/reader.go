@@ -390,7 +390,7 @@ func (s *SSTableReader) GetIndex() (*SSTableIndex, error) {
 	var indexFile *blockmanager.BlockedFile
 	if s.mode == MODE_ONE_FILE {
 		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
-		indexFile.Seek(header.IndexStartOffset + SSTableHeaderSize) // Seek to the index offset in the data file
+		indexFile.Seek(header.IndexStartOffset) // Seek to the index offset in the data file
 	} else {
 		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-index.db")
 	}

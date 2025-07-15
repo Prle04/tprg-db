@@ -46,6 +46,7 @@ func (item SSItem) GetTimestamp() uint64 {
 // Iterator for reading a file without changing the order of items
 type SSIterator struct {
 	reader             *SSTableReader
+	file               *blockmanager.BlockedFile
 	compressionManager ICompressionManager
 	numberOfReadItems  uint64
 }
@@ -53,6 +54,7 @@ type SSIterator struct {
 func NewSSIterator(reader *SSTableReader, compressionManager ICompressionManager) *SSIterator {
 	return &SSIterator{
 		reader:             reader,
+		file:               reader.getDataFile(),
 		compressionManager: compressionManager,
 		numberOfReadItems:  0,
 	}
@@ -66,12 +68,8 @@ func (it *SSIterator) Next() (ISSTableItem, error) {
 	if it.numberOfReadItems >= numberOfItems {
 		return nil, blockmanager.EOF // No more items to read
 	}
-	file := it.reader.getDataFile()
-	if file == nil {
-		return nil, blockmanager.EOF // Data file is not open
-	}
 	record := &sstablerecord{isCompressed: it.reader.IsCompressed()}
-	err = record.read(file)
+	err = record.read(it.file)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +87,7 @@ func (it *SSIterator) Next() (ISSTableItem, error) {
 	if record.recordType == FragmentTypeFirst {
 		for record.recordType != FragmentTypeLast {
 			record = &sstablerecord{isCompressed: it.reader.IsCompressed()}
-			err = record.read(file)
+			err = record.read(it.file)
 			if err != nil {
 				return nil, err
 			}

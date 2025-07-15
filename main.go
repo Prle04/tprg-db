@@ -131,7 +131,7 @@ func main() {
 	// setupTestDir()
 	// defer cleanupTestDir()
 
-	compressionManager := NewCompressionMockup(true)
+	compressionManager := NewCompressionMockup(false)
 
 	dilutionFactor := uint8(10)
 
