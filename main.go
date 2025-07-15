@@ -123,7 +123,9 @@ func main() {
 
 	compressionManager := &compressionMockup{compressed: false}
 
-	sstableManger := sstable.NewSSTableManager(testDir, "one-file", 10, BM, compressionManager)
+	dilutionFactor := uint8(10)
+
+	sstableManger := sstable.NewSSTableManager(testDir, sstable.MODE_ONE_FILE, dilutionFactor, BM, compressionManager)
 
 	data := getData(150)
 

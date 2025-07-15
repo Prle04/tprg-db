@@ -16,6 +16,7 @@ type SSTableReader struct {
 	compressionManager ICompressionManager
 	index              *SSTableIndex
 	toc                []string
+	tableName          string
 	filePath           string
 	mode               string // "one-file" or "multi-file"
 }
@@ -28,6 +29,7 @@ func newSSTableReader(
 ) *SSTableReader {
 	path := ospath.Join(folderPath, tableName)
 	table := &SSTableReader{
+		tableName:          tableName,
 		filePath:           path,
 		blockManager:       blockManager,
 		compressionManager: compressionManager,
@@ -354,4 +356,28 @@ func (s *SSTableReader) GetIterator() (ISSTableIterator, error) {
 		numberOfReadItems:  0,
 		totalNumberOfItems: header.NumberOfItems,
 	}, nil
+}
+
+func (s *SSTableReader) GetTableName() string {
+	return s.tableName
+}
+
+func (s *SSTableReader) Delete() error {
+	toDelete := []string{
+		s.filePath + "-data.db",
+	}
+	if s.mode == MODE_MULTI_FILE {
+		toDelete = append(toDelete, s.filePath+"-index.db")
+		toDelete = append(toDelete, s.filePath+"-filter.db")
+		toDelete = append(toDelete, s.filePath+"-summary.db")
+		toDelete = append(toDelete, s.filePath+"-metadata.db")
+	}
+	var resultError error
+	for _, filepath := range toDelete {
+		err := s.blockManager.OpenBlockedFile(filepath).Delete()
+		if err != nil {
+			resultError = err
+		}
+	}
+	return resultError
 }
