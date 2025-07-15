@@ -9,17 +9,6 @@ import (
 	"tprgdb/components/merkletree"
 )
 
-type ISSTableItem interface {
-	GetKey() string
-	GetValue() []byte
-	GetTimestamp() uint64
-	IsDeleted() bool
-}
-
-type ISSTableIterator interface {
-	Next() (ISSTableItem, error)
-}
-
 func flushToSSTable(
 	iterator ISSTableIterator,
 	maximumNumberOfItems uint64,
@@ -51,12 +40,14 @@ func flushToSSTable(
 	index := make(SSTableIndex, maximumNumberOfItems)
 	merkleBuilder := merkletree.NewMerkleTreeBuilder()
 	// Segment represents a block of data in the SSTable that will be a leaf in the Merkle tree
-	buffer := newSSTableBlock()
+	buffer := newSSTableBlock(compressionManager.IsCompressionEnabled())
 	currentOffset := uint64(0) // current offset in the data file, will be used to write the index
 	// Open the data file for writing
 	dataFile := manager.OpenBlockedFile(path + "-data.db")
 	// We write the SSTable header at the beginning of the file
 	dataFile.Seek(SSTableHeaderSize)
+
+	var minKey, maxKey *SSTableIndexItem = nil, nil
 
 	header := &SSTableHeader{
 		IndexStartOffset:       0,
@@ -70,18 +61,33 @@ func flushToSSTable(
 	// Loop through the items and add them to the segments
 	for item, err := iterator.Next(); err == nil; item, err = iterator.Next() {
 
-		// Get the key and value from the item
+		var compressedKey uint64 = 0
 		key := item.GetKey()
 		value := item.GetValue()
+
+		if compressionManager.IsCompressionEnabled() {
+			// Get the compressed key
+			compressedKey = item.GetCompressedKey()
+		}
 
 		// Insert the key into the bloom filter
 		bloomfilter.Insert([]byte(key))
 
 		// Add the key to the Index
 		index[header.NumberOfItems] = &SSTableIndexItem{
-			Key:    key,
-			Offset: currentOffset,
+			Key:                  key,
+			CompressedKey:        compressedKey,
+			Offset:               currentOffset,
+			IsCompressionEnabled: compressionManager.IsCompressionEnabled(),
 		}
+
+		if minKey == nil || item.GetKey() < minKey.Key {
+			minKey = index[header.NumberOfItems]
+		}
+		if maxKey == nil || item.GetKey() > maxKey.Key {
+			maxKey = index[header.NumberOfItems]
+		}
+
 		header.NumberOfItems++
 
 		// Will be used to calculate the lenght in bytes
@@ -93,7 +99,7 @@ func flushToSSTable(
 			// While there is no space in the buffer we write the buffer to the file
 			// and clear it for the next write
 			for {
-				ok, err := buffer.delete(dataFile, key, item.GetTimestamp())
+				ok, err := buffer.delete(dataFile, key, compressedKey, item.GetTimestamp())
 				if err != nil {
 					return nil, err
 				}
@@ -118,7 +124,7 @@ func flushToSSTable(
 			isContinuance := false
 			for len(value) > 0 {
 				// add the data to the current buffer and get the remaining data for which no space was available
-				remaining, err := buffer.add(dataFile, key, value, item.GetTimestamp(), isContinuance)
+				remaining, err := buffer.add(dataFile, key, compressedKey, value, item.GetTimestamp(), isContinuance)
 				if err != nil {
 					return nil, err
 				}
@@ -169,8 +175,10 @@ func flushToSSTable(
 			// Every summaryDilutionFactor-th item will be added to the summary
 			if i%uint64(summaryDilutionFactor) == 0 {
 				summary = append(summary, &SSTableIndexItem{
-					Key:    item.Key,
-					Offset: currentOffset,
+					Key:                  item.Key,
+					CompressedKey:        item.CompressedKey,
+					Offset:               currentOffset,
+					IsCompressionEnabled: item.IsCompressionEnabled,
 				})
 			}
 			// Write the index item to the file
@@ -185,11 +193,11 @@ func flushToSSTable(
 		header.SummaryStartOffset = dataFile.Tell()
 		// Write the summary to the file
 		// First we write the first and last item of the index so we have range of the whole table
-		err := dataFile.Write(index[0].getData()) // Write the first item of the index as a summary
+		err := dataFile.Write(minKey.getData()) // Write the first item of the index as a summary
 		if err != nil {
 			return nil, err
 		}
-		err = dataFile.Write(index[header.NumberOfItems-1].getData()) // Write the last item of the index as a summary
+		err = dataFile.Write(maxKey.getData()) // Write the last item of the index as a summary
 		if err != nil {
 			return nil, err
 		}
@@ -242,7 +250,6 @@ func flushToSSTable(
 			toc:                []string{path + "-data.db\n"},
 			filter:             nil,
 			summary:            nil,
-			index:              nil,
 		}
 		return reader, err
 	}
@@ -270,11 +277,11 @@ func flushToSSTable(
 
 	// First we write the first and last item of the index into the summary
 	// so we have range of the whole table
-	err = summaryFile.Write(index[0].getData()) // Write the first item of the index as a summary
+	err = summaryFile.Write(minKey.getData()) // Write the first item of the index as a summary
 	if err != nil {
 		return nil, err
 	}
-	err = summaryFile.Write(index[len(index)-1].getData()) // Write the last item of the index as a summary
+	err = summaryFile.Write(maxKey.getData()) // Write the last item of the index as a summary
 	if err != nil {
 		return nil, err
 	}
@@ -285,8 +292,10 @@ func flushToSSTable(
 		if i%int(summaryDilutionFactor) == 0 {
 			// Write the item to the summary file
 			err = summaryFile.Write((&SSTableIndexItem{
-				Key:    item.Key,
-				Offset: currentOffset,
+				Key:                  item.Key,
+				CompressedKey:        item.CompressedKey,
+				IsCompressionEnabled: item.IsCompressionEnabled,
+				Offset:               currentOffset,
 			}).getData())
 			if err != nil {
 				return nil, err
@@ -352,7 +361,6 @@ func flushToSSTable(
 		toc:                tocArray,
 		filter:             nil,
 		summary:            nil,
-		index:              nil,
 	}
 	return reader, err
 }

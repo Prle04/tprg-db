@@ -13,19 +13,18 @@ import (
 	"tprgdb/components/sstable"
 )
 
-var testDir string
-
 var BM = blockmanager.NewBlockManager(2048, 128)
 
-func setupTestDir(t *testing.T) {
-	testDir = "test-temp"
+func setupTestDir(t *testing.T) string {
+	testDir := "test-temp" + randomString(5)
 	err := os.Mkdir(testDir, 0o755)
 	if err != nil {
 		t.Fatalf("failed to create test dir: %v", err)
 	}
+	return testDir
 }
 
-func cleanupTestDir(t *testing.T) {
+func cleanupTestDir(t *testing.T, testDir string) {
 	if testDir != "" {
 		err := os.RemoveAll(testDir)
 		if err != nil {
@@ -36,10 +35,24 @@ func cleanupTestDir(t *testing.T) {
 }
 
 type testItem struct {
-	Key       *string
-	Value     []byte
-	Timestamp *uint64
-	Tombstone *bool
+	Key           *string
+	CompressedKey *uint64
+	Value         []byte
+	Timestamp     *uint64
+	Tombstone     *bool
+	CM            sstable.ICompressionManager
+}
+
+func (item *testItem) GetCompressedKey() uint64 {
+	if item == nil {
+		panic("ITEM IS NILLLLLLL")
+	}
+	if item.CompressedKey != nil {
+		return *item.CompressedKey
+	}
+	item.CompressedKey = new(uint64)
+	*item.CompressedKey, _ = item.CM.GetCompressed(item.GetKey())
+	return *item.CompressedKey
 }
 
 func (item *testItem) GetKey() string {
@@ -91,7 +104,7 @@ func randomString(n int) string {
 	return string(b)
 }
 
-func getData(n int) []*testItem {
+func getData(n int, compressionManager sstable.ICompressionManager) []*testItem {
 	items := make([]*testItem, n)
 	for i := range n {
 		items[i] = &testItem{
@@ -99,6 +112,7 @@ func getData(n int) []*testItem {
 			Value:     nil,
 			Timestamp: nil,
 			Tombstone: nil,
+			CM:        compressionManager,
 		}
 	}
 	return items
@@ -119,42 +133,63 @@ func (iter *testSSTableIterator) Next() (sstable.ISSTableItem, error) {
 }
 
 type compressionMockup struct {
+	s2i        map[string]uint64
+	i2s        map[uint64]string
+	count      uint64
 	compressed bool
 }
 
-func (c *compressionMockup) GetCompressied(s string) ([]byte, error) {
-	if !c.compressed {
-		return []byte(s), nil
+func NewCompressionMockup(compressed bool) *compressionMockup {
+	return &compressionMockup{
+		s2i:        make(map[string]uint64),
+		i2s:        make(map[uint64]string),
+		count:      0,
+		compressed: compressed,
 	}
-	// Mock compression: just reverse the string
-	runes := []rune(s)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
-	}
-	return []byte(string(runes)), nil
 }
 
-func (c *compressionMockup) GetDecompressied(u uint64) (string, error) {
-	// Mock decompression: just convert uint64 to string
-	return fmt.Sprintf("%d", u), nil
+func (c *compressionMockup) GetCompressed(s string) (uint64, error) {
+	if !c.compressed {
+		return 0, nil // No compression
+	}
+	if compressed, ok := c.s2i[s]; ok {
+		return compressed, nil
+	}
+	c.count++
+	c.s2i[s] = c.count
+	c.i2s[c.count] = s
+	return c.count, nil
+}
+
+func (c *compressionMockup) GetDecompressed(u uint64) (string, error) {
+	if !c.compressed {
+		return "", nil // No compression
+	}
+	if decompressed, ok := c.i2s[u]; ok {
+		return decompressed, nil
+	}
+	return "", fmt.Errorf("compressed value %d not found", u)
 }
 
 func (c *compressionMockup) IsCompressionEnabled() bool {
 	return c.compressed
 }
 
-func TestSSTable_CreateSSTable(t *testing.T) {
-	setupTestDir(t)
-	defer cleanupTestDir(t)
+func testCreate(t *testing.T, compression bool, mode string) {
+	testDir := setupTestDir(t)
+	defer cleanupTestDir(t, testDir)
 
-	compressionManager := &compressionMockup{compressed: false}
+	compressionManager := NewCompressionMockup(compression)
 
-	sstableManger := sstable.NewSSTableManager(testDir, sstable.MODE_ONE_FILE, 10, BM, compressionManager)
+	sstableManger := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
 
-	data := getData(150)
+	data := getData(150, compressionManager)
 
 	sort.Slice(data, func(i, j int) bool {
-		return data[i].GetKey() < data[j].GetKey()
+		if !compressionManager.IsCompressionEnabled() {
+			return data[i].GetKey() < data[j].GetKey()
+		}
+		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
@@ -196,8 +231,14 @@ func TestSSTable_CreateSSTable(t *testing.T) {
 		if read == nil {
 			t.Fatalf("item %s not found in SSTable", item.GetKey())
 		}
-		if read.GetKey() != item.GetKey() {
-			t.Fatalf("expected key %s, got %s", item.GetKey(), read.GetKey())
+		if compressionManager.IsCompressionEnabled() {
+			if read.GetCompressedKey() != item.GetCompressedKey() {
+				t.Fatalf("expected compressed key %d, got %d", item.GetCompressedKey(), read.GetCompressedKey())
+			}
+		} else {
+			if read.GetKey() != item.GetKey() {
+				t.Fatalf("expected key %s, got %s", item.GetKey(), read.GetKey())
+			}
 		}
 		// if string(read.GetValue()) != string(item.GetValue()) {
 		// 	t.Fatalf("expected value %s, got %s", string(item.GetValue()), string(read.GetValue()))
@@ -223,4 +264,17 @@ func TestSSTable_CreateSSTable(t *testing.T) {
 			t.Fatalf("item %s should not be found in SSTable but was", key)
 		}
 	}
+}
+
+func TestCreateSSTableWithCompressionOneFile(t *testing.T) {
+	testCreate(t, true, sstable.MODE_ONE_FILE)
+}
+func TestCreateSSTableWithCompressionMultipleFiles(t *testing.T) {
+	testCreate(t, true, sstable.MODE_MULTI_FILE)
+}
+func TestCreateSSTableWithoutCompression(t *testing.T) {
+	testCreate(t, false, sstable.MODE_ONE_FILE)
+}
+func TestCreateSSTableWithoutCompressionMultipleFiles(t *testing.T) {
+	testCreate(t, false, sstable.MODE_MULTI_FILE)
 }
