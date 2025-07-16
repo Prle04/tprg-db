@@ -302,10 +302,7 @@ func testIterator(t *testing.T, mode string, createCompressed, iterateCompressed
 		t.Fatal("failed to create SSTable reader")
 	}
 
-	it, err := reader.GetIterator()
-	if err != nil {
-		t.Fatalf("failed to get iterator: %v", err)
-	}
+	it := reader.GetIterator()
 	if it == nil {
 		t.Fatal("failed to create SSTable iterator")
 	}
@@ -331,6 +328,101 @@ func testIterator(t *testing.T, mode string, createCompressed, iterateCompressed
 	}
 	if count != numberOfItems {
 		t.Fatalf("expected %d items, got %d", numberOfItems, count)
+	}
+}
+
+func splitWithOverlap(items []sstable.ISSTableItem, n int, itemsPerSlice int) [][]sstable.ISSTableItem {
+	N := len(items)
+	toAdd := n*itemsPerSlice - N
+
+	// Append random items (with overlap allowed)
+	for range toAdd {
+		items = append(items, items[rand.Intn(N)])
+	}
+
+	// Shuffle all items
+	rand.Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
+	})
+
+	// Initialize slices and sets to track unique items per slice
+	slices := make([][]sstable.ISSTableItem, n)
+	seen := make([]map[string]bool, n) // assuming item.Key() returns string
+	for i := range seen {
+		seen[i] = make(map[string]bool)
+	}
+
+	// Distribute items
+	for _, item := range items {
+		key := item.GetKey() // adjust this if you use something else as identity
+
+		// Try to place item in a slice that doesn't already contain it
+		for j := range n {
+			idx := j
+			if len(slices[idx]) < itemsPerSlice && !seen[idx][key] {
+				slices[idx] = append(slices[idx], item)
+				seen[idx][key] = true
+				break
+			}
+		}
+	}
+
+	return slices
+}
+
+func createMergeTest(t *testing.T, compressMerged bool, mergedMode string) {
+	testDir := setupTestDir(t)
+	defer cleanupTestDir(t, testDir)
+
+	compressionManager := NewCompressionMockup(compressMerged)
+
+	sstableManger := sstable.NewSSTableManager(testDir, mergedMode, 10, BM, compressionManager)
+
+	items, keys := generateItems(100, compressionManager)
+
+	slices := splitWithOverlap(items, 5, 40)
+	keyMap := make(map[string]int)
+	for _, key := range keys {
+		keyMap[key] = 0
+	}
+	readers := make([]*sstable.SSTableReader, len(slices))
+	for i, slice := range slices {
+		sort.Slice(slice, func(i, j int) bool {
+			if !compressionManager.IsCompressionEnabled() {
+				return slice[i].GetKey() < slice[j].GetKey()
+			}
+			return slice[i].GetCompressedKey() < slice[j].GetCompressedKey()
+		})
+		tableName := fmt.Sprintf("test-table-merge-%d", i)
+		reader, err := sstableManger.CreateSSTable(tableName, sstable.NewSSListIterator(slice, compressionManager), uint64(len(slice)))
+		if err != nil {
+			t.Fatalf("failed to create SSTable %s: %v", tableName, err)
+		}
+		if reader == nil {
+			t.Fatalf("failed to create SSTable reader for %s", tableName)
+		}
+		readers[i] = reader
+	}
+	iter, err := sstable.NewSSTableMergeIterator(readers, compressMerged)
+	if err != nil {
+		t.Fatalf("failed to create SSTable merge iterator: %v", err)
+	}
+	for item, err := iter.Next(); ; item, err = iter.Next() {
+		if err == blockmanager.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("merge iterator error: %v", err)
+		}
+		key := item.GetKey()
+		value, exists := keyMap[key]
+		if !exists {
+			t.Fatalf("unexpected key found in merged SSTable: %s", key)
+		}
+		if value != 0 {
+			t.Fatalf("key %s found multiple times in merged SSTable", key)
+		}
+		keyMap[key]++
 	}
 }
 
@@ -378,4 +470,18 @@ func TestIterateWith2WithoutMultiFile(t *testing.T) {
 }
 func TestIterateWith2WithMultiFile(t *testing.T) {
 	testIterator(t, sstable.MODE_MULTI_FILE, true, true)
+}
+
+// MERGE TESTS
+func TestMergeSSTablesWithCompressionOneFile(t *testing.T) {
+	createMergeTest(t, true, sstable.MODE_ONE_FILE)
+}
+func TestMergeSSTablesWithCompressionMultiFile(t *testing.T) {
+	createMergeTest(t, true, sstable.MODE_MULTI_FILE)
+}
+func TestMergeSSTablesWithoutCompressionOneFile(t *testing.T) {
+	createMergeTest(t, false, sstable.MODE_ONE_FILE)
+}
+func TestMergeSSTablesWithoutCompressionMultiFile(t *testing.T) {
+	createMergeTest(t, false, sstable.MODE_MULTI_FILE)
 }

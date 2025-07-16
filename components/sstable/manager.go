@@ -32,7 +32,7 @@ func (m *SSTableMenager) MergeSSTables(newTableName string, readers []*SSTableRe
 	if len(readers) == 0 {
 		return nil, nil // No readers to merge
 	}
-	iterator, err := NewSSTableMergeIterator(readers)
+	iterator, err := NewSSTableMergeIterator(readers, m.compressionManager.IsCompressionEnabled())
 	if err != nil {
 		return nil, err // Error creating merge iterator
 	}

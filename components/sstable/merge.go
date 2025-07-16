@@ -10,53 +10,68 @@ type mergeItem struct {
 	ReaderIndex int
 }
 
-type mergeItemHeap []mergeItem
-
-func (h mergeItemHeap) Len() int { return len(h) }
-func (h mergeItemHeap) Less(i, j int) bool {
-	if h[i].Item.GetKey() < h[j].Item.GetKey() {
-		return true
-	}
-	if h[i].Item.GetKey() > h[j].Item.GetKey() {
-		return false
-	}
-	return h[i].Item.GetTimestamp() > h[j].Item.GetTimestamp() // If keys are equal, compare by timestamp
+type mergeItemHeap struct {
+	items                []mergeItem
+	isCompressionEnabled bool
 }
-func (h mergeItemHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+func (h mergeItemHeap) Len() int { return len(h.items) }
+func (h mergeItemHeap) Less(i, j int) bool {
+	if h.isCompressionEnabled {
+		// For compressed items, compare by key and then by timestamp
+		if h.items[i].Item.GetCompressedKey() < h.items[j].Item.GetCompressedKey() {
+			return true
+		}
+		if h.items[i].Item.GetCompressedKey() > h.items[j].Item.GetCompressedKey() {
+			return false
+		}
+	} else {
+		// For uncompressed items, compare by key only
+		if h.items[i].Item.GetKey() < h.items[j].Item.GetKey() {
+			return true
+		}
+		if h.items[i].Item.GetKey() > h.items[j].Item.GetKey() {
+			return false
+		}
+	}
+	return h.items[i].Item.GetTimestamp() > h.items[j].Item.GetTimestamp() // If keys are equal, compare by timestamp
+}
+func (h mergeItemHeap) Swap(i, j int) { h.items[i], h.items[j] = h.items[j], h.items[i] }
 func (h *mergeItemHeap) Push(x interface{}) {
-	*h = append(*h, x.(mergeItem))
+	h.items = append(h.items, x.(mergeItem))
 }
 
 func (h *mergeItemHeap) Pop() interface{} {
-	old := *h
+	old := h.items
 	n := len(old)
 	item := old[n-1]
-	*h = old[0 : n-1]
+	h.items = old[0 : n-1]
 	return item
 }
 
 type SSTableMergeIterator struct {
-	readers       []*SSTableReader
-	iterators     []ISSTableIterator
-	lastItem      ISSTableItem
-	priorityQueue mergeItemHeap
+	// readers       []*SSTableReader
+	iterators            []ISSTableIterator
+	lastItem             ISSTableItem
+	priorityQueue        *mergeItemHeap
 }
 
-func NewSSTableMergeIterator(readers []*SSTableReader) (ISSTableIterator, error) {
+func NewSSTableMergeIterator(readers []*SSTableReader, isCompressionEnabled bool) (ISSTableIterator, error) {
 	if len(readers) == 0 {
 		return nil, nil // No readers to merge
 	}
 	if len(readers) == 1 {
-		return readers[0].GetIterator() // If only one reader, return its iterator
+		return readers[0].GetIterator(), nil // If only one reader, return its iterator
 	}
+
 	iterators := make([]ISSTableIterator, len(readers))
-	priorityQueue := make(mergeItemHeap, 0, len(readers))
+	priorityQueue := &mergeItemHeap{
+		items:                make([]mergeItem, 0, len(readers)),
+		isCompressionEnabled: isCompressionEnabled,
+	}
 	for i, reader := range readers {
 		var err error
-		iterators[i], err = reader.GetIterator()
-		if err != nil {
-			return nil, err // Error getting iterator for reader
-		}
+		iterators[i] = reader.GetIterator()
 		// Initialize the priority queue with the first item from each iterator
 		item, err := iterators[i].Next()
 		if err != nil {
@@ -65,32 +80,26 @@ func NewSSTableMergeIterator(readers []*SSTableReader) (ISSTableIterator, error)
 			}
 			continue // If EOF, skip this reader
 		}
-		priorityQueue = append(priorityQueue, mergeItem{
+		priorityQueue.items = append(priorityQueue.items, mergeItem{
 			Item:        item,
 			ReaderIndex: i,
 		})
 	}
-
-	heap.Init(&priorityQueue)
+	heap.Init(priorityQueue)
 
 	return &SSTableMergeIterator{
-		readers:       readers,
-		lastItem:      nil,
-		iterators:     iterators,
-		priorityQueue: priorityQueue,
+		// readers:       readers,
+		lastItem:             nil,
+		iterators:            iterators,
+		priorityQueue:        priorityQueue,
 	}, nil
 }
 
-func (m SSTableMergeIterator) Next() (ISSTableItem, error) {
-	if len(m.priorityQueue) == 0 {
+func (m *SSTableMergeIterator) Next() (ISSTableItem, error) {
+	if len(m.priorityQueue.items) == 0 {
 		return nil, blockmanager.EOF // No more items to read
 	}
-	item := heap.Pop(&m.priorityQueue).(mergeItem)
-	if m.lastItem != nil && item.Item.GetKey() == m.lastItem.GetKey() {
-		// If the item is a duplicate, we skip it
-		return m.Next() // Recursively call Next to get the next unique item
-	}
-	m.lastItem = item.Item
+	item := heap.Pop(m.priorityQueue).(mergeItem)
 	// Read the next item from the same reader
 	nextItem, err := m.iterators[item.ReaderIndex].Next()
 	if err != nil {
@@ -99,11 +108,14 @@ func (m SSTableMergeIterator) Next() (ISSTableItem, error) {
 		}
 	} else {
 		// If we successfully read the next item, add it to the priority queue
-		heap.Push(&m.priorityQueue, mergeItem{
+		heap.Push(m.priorityQueue, mergeItem{
 			Item:        nextItem,
 			ReaderIndex: item.ReaderIndex,
 		})
 	}
-
-	return nextItem, nil
+	if m.lastItem != nil && item.Item.GetKey() == m.lastItem.GetKey() {
+		return m.Next() // Skip duplicates
+	}
+	m.lastItem = item.Item
+	return item.Item, nil
 }

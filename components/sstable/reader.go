@@ -409,25 +409,14 @@ func (s *SSTableReader) GetIndex() (*SSTableIndex, error) {
 	return &index, nil
 }
 
-func (s *SSTableReader) GetIterator() (ISSTableIterator, error) {
-	// If the SSTable is compressed
-	if s.IsCompressed() {
-		// and we need to write compressed items
-		// we return an iterator that does't change order of items
-		if s.compressionManager.IsCompressionEnabled() {
-			return NewSSIterator(s, s.compressionManager), nil
-		}
-		// else we return an iterator that decompresses items
-		return NewSSIndexIterator(s, s.compressionManager), nil
+func (s *SSTableReader) GetIterator() ISSTableIterator {
+	// If the compression state is the same as the compression manager's state, we can use 
+	// the iterator that does't change item order.
+	if s.IsCompressed() == s.compressionManager.IsCompressionEnabled() {
+		return NewSSIterator(s, s.compressionManager)
 	} else {
-		// If the SSTable is not compressed
-		// and we need to write compressed items
-		// we return an iterator that compresses items
-		if s.compressionManager.IsCompressionEnabled() {
-			return NewSSIndexIterator(s, s.compressionManager), nil
-		}
-		// else we return an iterator that does't change order of items
-		return NewSSIterator(s, s.compressionManager), nil
+		// Otherwise, we need to use the iterator that orders items by new compression state.
+		return NewSSIterator(s, s.compressionManager)
 	}
 }
 
