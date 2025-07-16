@@ -8,6 +8,11 @@ import (
 	"tprgdb/components/bloomfilter"
 )
 
+type KeyBoundaries struct {
+	MinKey string
+	MaxKey string
+}
+
 type SSTableReader struct {
 	header             *SSTableHeader
 	filter             *bloomfilter.BloomFilter
@@ -18,6 +23,7 @@ type SSTableReader struct {
 	tableName          string
 	filePath           string
 	mode               string // "one-file" or "multi-file"
+	keyBoundaries      *KeyBoundaries
 }
 
 func newSSTableReader(
@@ -410,7 +416,7 @@ func (s *SSTableReader) GetIndex() (*SSTableIndex, error) {
 }
 
 func (s *SSTableReader) GetIterator() ISSTableIterator {
-	// If the compression state is the same as the compression manager's state, we can use 
+	// If the compression state is the same as the compression manager's state, we can use
 	// the iterator that does't change item order.
 	if s.IsCompressed() == s.compressionManager.IsCompressionEnabled() {
 		return NewSSIterator(s, s.compressionManager)
@@ -452,4 +458,111 @@ func (s *SSTableReader) getDataFile() *blockmanager.BlockedFile {
 	file := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
 	file.Seek(SSTableHeaderSize) // Skip the header
 	return file
+}
+
+func (s *SSTableReader) GetFilePath() string {
+	return s.filePath
+}
+
+// func (s *SSTableReader) Validate() error {
+// 	header, err := s.getHeader()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	var merkleFile *blockmanager.BlockedFile
+// 	if s.mode == MODE_ONE_FILE {
+// 		// mode is "one-file"
+// 		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+// 		merkleFile.Seek(header.MerkleStartOffset)
+// 	} else {
+// 		// mode is "multi-file"
+// 		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-merkle.db")
+// 	}
+// 	merkleTree := &merkletree.MerkleTree{}
+// 	err = merkleTree.DeserializeFromFile(merkleFile)
+// 	if err != nil {
+// 		merkleFile.Close()
+// 	}
+// 	merkleFile.Close()
+// 	builder := merkletree.NewMerkleTreeBuilder()
+// 	buffer := make([]byte, SegmentBlockSize)
+// 	dataFile := s.getDataFile()
+// 	var bytesRead uint64 = 0
+// 	for bytesRead < header.IndexStartOffset-SSTableHeaderSize {
+// 		toRead := SegmentBlockSize
+// 		remaining := header.IndexStartOffset - SSTableHeaderSize - bytesRead
+// 		if remaining < uint64(SegmentBlockSize) {
+// 			toRead = int(remaining)
+// 		}
+// 		n, err := dataFile.ReadAt(buffer[:toRead], int64(SSTableHeaderSize+bytesRead))
+// 		if err != nil && err.Error() != "EOF" {
+// 			return err
+// 		}
+// 		if n == 0 {
+// 			break
+// 		}
+// 		builder.AddChunk(buffer[:n])
+// 		bytesRead += uint64(n)
+// 	}
+// }
+
+func (s *SSTableReader) GetKeyBoundaries() (*KeyBoundaries, error) {
+	if s.keyBoundaries != nil {
+		return s.keyBoundaries, nil
+	}
+	s.summary = &SSTableSummary{}
+	header, err := s.getHeader()
+	if err != nil {
+		return nil, err
+	}
+	var file *blockmanager.BlockedFile
+	if s.mode == MODE_ONE_FILE {
+		file = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+		file.Seek(header.SummaryStartOffset)
+	} else {
+		file = s.blockManager.OpenBlockedFile(s.filePath + "-summary.db")
+	}
+
+	s.summary.minKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+	err = s.summary.minKey.DeserializeFromFile(file)
+	if err != nil {
+		return nil, err
+	}
+	s.summary.maxKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+	err = s.summary.maxKey.DeserializeFromFile(file)
+	if err != nil {
+		return nil, err
+	}
+	file.Close()
+	if header.IsCompressionEnabled {
+		// Decompress Min and Max keys if compression is enabled
+		minKey, err := s.compressionManager.GetDecompressed(s.summary.minKey.CompressedKey)
+		if err != nil {
+			return nil, err
+		}
+		s.summary.minKey.Key = minKey
+		maxKey, err := s.compressionManager.GetDecompressed(s.summary.maxKey.CompressedKey)
+		if err != nil {
+			return nil, err
+		}
+		s.summary.maxKey.Key = maxKey
+	}
+	s.keyBoundaries = &KeyBoundaries{
+		MinKey: s.summary.minKey.Key,
+		MaxKey: s.summary.maxKey.Key,
+	}
+	// Return the key boundaries
+	return s.keyBoundaries, nil
+}
+
+func (s *SSTableReader) AreKeysOverlaping(other *SSTableReader) (bool, error) {
+	currentBoundaries, err := s.GetKeyBoundaries()
+	if err != nil {
+		return false, err
+	}
+	otherBoundaries, err := other.GetKeyBoundaries()
+	if err != nil {
+		return false, err
+	}
+	return currentBoundaries.MinKey <= otherBoundaries.MaxKey && otherBoundaries.MinKey <= currentBoundaries.MaxKey, nil
 }

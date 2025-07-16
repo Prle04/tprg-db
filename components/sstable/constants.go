@@ -8,7 +8,6 @@ const (
 	FragmentTypeMiddle  uint8 = 4
 	FragmentTypeLast    uint8 = 8
 
-	SegmentNumberSize uint8 = 8
 	TypeSize          uint8 = 1
 	TombstoneSize     uint8 = 1
 	CRCSize           uint8 = 8

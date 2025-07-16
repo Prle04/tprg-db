@@ -159,13 +159,13 @@ func flushToSSTable(
 		merkleBuilder.AddData(&data)
 		buffer.clear()
 	}
-
+	
+	header.IndexStartOffset = dataFile.Tell()
 	// Now that we have completed writting all items to data segments
 	// we can write other segments of the SSTable
 	// Depending on the mode, they will be written to different files
 	if mode == MODE_ONE_FILE {
 		// We will write everything to the same file
-		header.IndexStartOffset = dataFile.Tell()
 		currentOffset = 0                // reset the current offset for the index
 		summary := make(SSTableIndex, 0) // create a summary of the index
 
