@@ -2,22 +2,18 @@ package sstable
 
 import (
 	"encoding/binary"
-	"fmt"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/hash"
 	"tprgdb/components/serialization"
 )
 
 type sstablerecord struct {
-	recordType uint8  // Type of the fragment
-	timestamp  uint64 // Timestamp of the fragment
-	tombstone  bool   // Tombstone flag
-	key        string // Key of the fragment
-	value      []byte // Values of the fragment
-}
-
-func (record *sstablerecord) size() uint64 {
-	return uint64(len(record.getData()))
+	timestamp     uint64 // Timestamp of the fragment
+	tombstone     bool   // Tombstone flag
+	key           string // Key of the fragment
+	compressedKey uint64 // Int version of the key from global compression dictionary
+	value         []byte // Values of the fragment
+	isCompressed  bool   // Flag to indicate if compression is enabled
 }
 
 func (record *sstablerecord) write(file *blockmanager.BlockedFile) error {
@@ -30,18 +26,22 @@ func (record *sstablerecord) write(file *blockmanager.BlockedFile) error {
 func (record *sstablerecord) getData() []byte {
 	data := make([]byte, 0)
 	variableBuffer := make([]byte, 8)
-	// type
-	data = append(data, serialization.UInt8ToBytes(record.recordType)...)
 	// timestamp
 	inserted := binary.PutUvarint(variableBuffer, record.timestamp)
 	data = append(data, variableBuffer[:inserted]...)
 	// tombstone
 	data = append(data, serialization.BoolToBytes(record.tombstone)...)
-	// key size
-	inserted = binary.PutUvarint(variableBuffer, uint64(len(record.key)))
-	data = append(data, variableBuffer[:inserted]...)
-	// key
-	data = append(data, []byte(record.key)...)
+	if record.isCompressed {
+		// compressed key
+		inserted = binary.PutUvarint(variableBuffer, record.compressedKey)
+		data = append(data, variableBuffer[:inserted]...)
+	} else {
+		// key size
+		inserted = binary.PutUvarint(variableBuffer, uint64(len(record.key)))
+		data = append(data, variableBuffer[:inserted]...)
+		// key
+		data = append(data, []byte(record.key)...)
+	}
 	if !record.tombstone {
 		// value size
 		inserted = binary.PutUvarint(variableBuffer, uint64(len(record.value)))
@@ -63,17 +63,6 @@ func (record *sstablerecord) read(file *blockmanager.BlockedFile) error {
 	}
 	crc := serialization.BytesToUInt64(crcBytes)
 	data := make([]byte, 0)
-	// read the type
-	typeByte, err2 := file.Read(uint64(TypeSize))
-	if err2 != nil {
-		return err2
-	}
-	data = append(data, typeByte...)
-	record.recordType = serialization.BytesToUInt8(typeByte)
-	// if the fragment is padding, we reached the end of the segment
-	if record.recordType == FragmentTypePadding {
-		return nil
-	}
 
 	// read the timestamp
 	timestampBytes, timestampValue, err3 := file.ReadUVariable()
@@ -91,18 +80,28 @@ func (record *sstablerecord) read(file *blockmanager.BlockedFile) error {
 	data = append(data, tombstoneByte...)
 	record.tombstone = serialization.BytesToBool(tombstoneByte)
 
-	// read the key
-	keyLenghtBytes, keyLength, err5 := file.ReadUVariable()
-	if err5 != nil {
-		return err5
+	if record.isCompressed {
+		// read the compressed key
+		compressedKeyBytes, compressedKey, err5 := file.ReadUVariable()
+		if err5 != nil {
+			return err5
+		}
+		data = append(data, compressedKeyBytes...)
+		record.compressedKey = compressedKey
+	} else {
+		// read the key
+		keyLenghtBytes, keyLength, err5 := file.ReadUVariable()
+		if err5 != nil {
+			return err5
+		}
+		data = append(data, keyLenghtBytes...)
+		keyBytes, err6 := file.Read(keyLength)
+		if err6 != nil {
+			return err6
+		}
+		data = append(data, keyBytes...)
+		record.key = serialization.BytesToString(keyBytes)
 	}
-	data = append(data, keyLenghtBytes...)
-	keyBytes, err6 := file.Read(keyLength)
-	if err6 != nil {
-		return err6
-	}
-	data = append(data, keyBytes...)
-	record.key = serialization.BytesToString(keyBytes)
 
 	// if the fragment is deleted there is noting else to read
 	if !record.tombstone {
@@ -125,10 +124,6 @@ func (record *sstablerecord) read(file *blockmanager.BlockedFile) error {
 	return nil
 }
 
-func (record *sstablerecord) GetType() uint8 {
-	return record.recordType
-}
-
 func (record *sstablerecord) GetTimestamp() uint64 {
 	return record.timestamp
 }
@@ -141,28 +136,10 @@ func (record *sstablerecord) GetKey() string {
 	return record.key
 }
 
-func (record *sstablerecord) GetValue() []byte {
-	return record.value
+func (record *sstablerecord) GetCompressedKey() uint64 {
+	return record.compressedKey
 }
 
-func (record *sstablerecord) Print() {
-	switch record.recordType {
-	case FragmentTypeFull:
-		println("Type: Full")
-	case FragmentTypeFirst:
-		println("Type: First")
-	case FragmentTypeMiddle:
-		println("Type: Middle")
-	case FragmentTypeLast:
-		println("Type: Last")
-	case FragmentTypePadding:
-		println("Type: Padding")
-	}
-	println("Timestamp: ", record.timestamp)
-	fmt.Println("Key: ", record.key)
-	println("Tombstone: ", record.tombstone)
-	if !record.tombstone {
-		fmt.Println("Value: ", string(record.value))
-	}
-	fmt.Println("====================================")
+func (record *sstablerecord) GetValue() []byte {
+	return record.value
 }

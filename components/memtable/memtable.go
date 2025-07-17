@@ -5,7 +5,7 @@ import (
 )
 
 // MemtableItem represents an item in the memtable with a key, value, and deletion status.
-type MemtableItem interface {
+type IMemtableItem interface {
 	GetKey() string
 	GetValue() []byte
 	IsDeleted() bool
@@ -13,8 +13,8 @@ type MemtableItem interface {
 
 // MemtableDataStructure defines the interface for a data structure used in the memtable.
 // So far implementated: SkipList, HashMapWrapper, and a Btree.
-type MemtableDataStructure interface {
-	Get(key string) *MemtableItem
+type IMemtableDataStructure interface {
+	Get(key string) IMemtableItem
 	Set(key string, value []byte)
 	Delete(key string)
 
@@ -23,11 +23,11 @@ type MemtableDataStructure interface {
 	GetNumberOfKeys() int
 
 	// GetAllItems returns all items in the data structure sorted by key.
-	GetAllItems() []*MemtableItem
+	GetAllItems() []IMemtableItem
 }
 
 type memtableStruct struct {
-	dataStructureInstance MemtableDataStructure
+	dataStructureInstance IMemtableDataStructure
 	// Contains a boolean indicating whether the instance needs to be flushed.
 	flush bool
 	// Contains the number of the last WAL segment that was
@@ -46,7 +46,7 @@ type Memtable struct {
 }
 
 // type of a function that creates a new instance of MemtableDataStructure.
-type newInstanceFunc func() (MemtableDataStructure, error)
+type newInstanceFunc func() (IMemtableDataStructure, error)
 
 func NewMemtable(
 	numberOfInstances int,
@@ -80,7 +80,7 @@ func NewMemtable(
 	}, nil
 }
 
-func (m *Memtable) Get(key string) *MemtableItem {
+func (m *Memtable) Get(key string) IMemtableItem {
 
 	// Check current instance first
 	item := m.instances[m.currentInstance].dataStructureInstance.Get(key)
@@ -129,7 +129,7 @@ func (m *Memtable) moveToNextInstance() {
 	m.instances[m.currentInstance].dataStructureInstance.Clear()
 }
 
-func (m *Memtable) Flush() ([]*MemtableItem, uint64) {
+func (m *Memtable) Flush() ([]IMemtableItem, uint64) {
 	// Loop through all instances to see if they need to be flushed
 	// Starting from the previous instance since the current instance cannot be flushed
 	// and going full circle

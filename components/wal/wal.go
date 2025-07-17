@@ -91,7 +91,10 @@ func (wal *WriteAheadLog) Add(key string, value []byte) error {
 		if err != nil {
 			return err
 		}
-		isContinuance = true
+		// if the remaining data is less than the original value, it means we are continuing a previous record
+		// otherwise, if the remaining data is equal to the original value, it means this is a new record and we had padding
+		isContinuance = len(remaining) < len(value)
+		// s
 		value = remaining
 	}
 	return nil
