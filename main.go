@@ -8,10 +8,23 @@ import (
 	"strings"
 	"time"
 	"tprgdb/components/blockmanager"
+	"tprgdb/components/lsm"
 	"tprgdb/components/sstable"
 )
 
 var testDir string = "test-temp"
+
+func newTestLSM(maxLevel int, algo string, filePerLevel int, multiplier int) *lsm.LSM {
+	blockMgr := blockmanager.NewBlockManager(2048, 128)
+	compression := NewCompressionMockup(true)
+	sstMgr := sstable.NewSSTableManager(testDir, "one-file", 2, blockMgr, compression)
+
+	tree := lsm.NewLSM(maxLevel, testDir, algo, blockMgr, sstMgr, compression, filePerLevel, multiplier)
+	if tree == nil {
+		panic("Failed to create LSM tree")
+	}
+	return tree
+}
 
 var BM = blockmanager.NewBlockManager(2048, 128)
 
@@ -49,6 +62,7 @@ func (item testItem) GetCompressedKey() uint64 {
 }
 
 func (item testItem) GetValue() []byte {
+	return item.value
 	return []byte(strings.Repeat(item.key, 100))
 	// length := rand.Intn(100) + 1 // Random length between 1 and 100
 	// str := randomString(length)
@@ -241,7 +255,54 @@ func merge() {
 	}
 }
 
+func LSMTest() {
+	tree := newTestLSM(3, lsm.SIZE_TIERED, 2, 10)
+
+	item := &testItem{
+		key:           "foo",
+		value:         []byte("bar"),
+		compressedKey: 42,
+	}
+
+	if err := tree.AddTable([]sstable.ISSTableItem{item}); err != nil {
+		panic("AddTable failed: %v")
+	}
+
+	err := tree.Save()
+	if err != nil {
+		panic("SaveTable failed: %v")
+	}
+
+	// Create new tree, load from disk
+	newTree := newTestLSM(3, lsm.SIZE_TIERED, 2, 10)
+
+	err = newTree.Load()
+	if err != nil {
+		panic("LoadTable failed: %v")
+	}
+
+	got, err := tree.Get("foo")
+	if err != nil {
+		panic("Get failed: %v")
+	}
+	if got == nil {
+		panic("Get failed: nil")
+	}
+	if string(got.GetValue()) != "bar" {
+		panic("Get failed: expected 'bar', got " + string(got.GetValue()))
+	}
+	fmt.Println("OK")
+
+}
 func main() {
+
+	LSMTest()
+	var input string
+	fmt.Print("Enter a key to search (or 'q' to quit): ")
+	_, err := fmt.Scanln(&input)
+	if err != nil {
+		fmt.Println("Error reading input:", err)
+	}
 
 	compressionManager := NewCompressionMockup(false)
 
