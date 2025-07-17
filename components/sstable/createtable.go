@@ -40,7 +40,7 @@ func flushToSSTable(
 	index := make(SSTableIndex, maximumNumberOfItems)
 	merkleBuilder := merkletree.NewMerkleTreeBuilder()
 	// Segment represents a block of data in the SSTable that will be a leaf in the Merkle tree
-	buffer := newSSTableBlock(compressionManager.IsCompressionEnabled())
+	buffer := make([]byte, 0)
 	currentOffset := uint64(0) // current offset in the data file, will be used to write the index
 	// Open the data file for writing
 	dataFile := manager.OpenBlockedFile(path + "-data.db")
@@ -64,6 +64,8 @@ func flushToSSTable(
 		var compressedKey uint64 = 0
 		key := item.GetKey()
 		value := item.GetValue()
+		timestamp := item.GetTimestamp()
+		tombstone := item.IsDeleted()
 
 		if compressionManager.IsCompressionEnabled() {
 			// Get the compressed key
@@ -94,57 +96,28 @@ func flushToSSTable(
 		// that this item will take in the data file
 		startingOffset := dataFile.Tell()
 
-		// If the item is deleted we create a special record
-		if item.IsDeleted() {
-			// While there is no space in the buffer we write the buffer to the file
-			// and clear it for the next write
-			for {
-				ok, err := buffer.delete(dataFile, key, compressedKey, item.GetTimestamp())
-				if err != nil {
-					return nil, err
-				}
-				if ok {
-					break
-				}
-				// datablock is full, we need to write it to the file
-				data := buffer.getData()
-				// Add the data to the Merkle tree buildrer as a leaf node
-				merkleBuilder.AddData(&data)
-				// Clear the buffer for the next write
-				buffer.clear()
-			}
-		} else {
-			// While there is part of the value that does not fit in the buffer
-			// we add it to the buffer
-			// and write the buffer to the file when it is full
-			// and clear it for the next write
+		record := &sstablerecord{
+			key:           key,
+			compressedKey: compressedKey,
+			isCompressed:  compressionManager.IsCompressionEnabled(),
+			value:         value,
+			timestamp:     timestamp,
+			tombstone:     tombstone,
+		}
+		// Add the record to the buffer
+		buffer = append(buffer, record.getData()...)
 
-			// IsContinuance is used to determine if the record is a continuation of a previous record
-			// If it is, we set the record type to middle or last depending on the previous record
-			isContinuance := false
-			for len(value) > 0 {
-				// add the data to the current buffer and get the remaining data for which no space was available
-				remaining, err := buffer.add(dataFile, key, compressedKey, value, item.GetTimestamp(), isContinuance)
-				if err != nil {
-					return nil, err
-				}
-				// The whole value fitted in the buffer
-				if remaining == nil {
-					break
-				}
-				// buffer is full, we need to write it to the file
-				data := buffer.getData()
-				// Add the data to the Merkle tree builder as a leaf node
-				merkleBuilder.AddData(&data)
-				// Clear the buffer for the next write
-				buffer.clear()
-				// We know that the record is not last fragment so we set the type to middle or first depending on the previous record
-				isContinuance = len(remaining) < len(value) // If the remaining value is smaller than the original value, it means that we are continuing a previous record
-				// If the remaining value has the same size as the original value, it means that we hit the padding threshold
-				// Set the remaining value to the value that did not fit in the buffer
-				// and continue the loop to add it to the next buffer
-				value = remaining
-			}
+		err := record.write(dataFile)
+
+		if err != nil {
+			return nil, err
+		}
+		if len(buffer) >= int(SegmentBlockSize) {
+			// Add the data to the Merkle tree builder as a leaf node
+			chunk := buffer[:SegmentBlockSize]
+			merkleBuilder.AddData(&chunk)
+			// truncate the buffer to the remaining data
+			buffer = buffer[SegmentBlockSize:]
 		}
 
 		// Calculate the lenght in bytes that this item took in the data file
@@ -154,12 +127,10 @@ func flushToSSTable(
 	}
 
 	// If the buffer is not empty we need to create a merkle tree leaf from it
-	if buffer.size > 0 {
-		data := buffer.getData()
-		merkleBuilder.AddData(&data)
-		buffer.clear()
+	if len(buffer) > 0 {
+		merkleBuilder.AddData(&buffer)
 	}
-	
+
 	header.IndexStartOffset = dataFile.Tell()
 	// Now that we have completed writting all items to data segments
 	// we can write other segments of the SSTable

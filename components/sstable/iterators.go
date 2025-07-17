@@ -80,20 +80,7 @@ func (it *SSIterator) Next() (ISSTableItem, error) {
 		Tombstone:     record.tombstone,
 		Timestamp:     record.timestamp,
 	}
-	if record.recordType == FragmentTypePadding {
-		// Padding record, skip it
-		return it.Next() // Recursively call Next to get the next valid item
-	}
-	if record.recordType == FragmentTypeFirst {
-		for record.recordType != FragmentTypeLast {
-			record = &sstablerecord{isCompressed: it.reader.IsCompressed()}
-			err = record.read(it.file)
-			if err != nil {
-				return nil, err
-			}
-			item.Value = append(item.Value, record.value...)
-		}
-	}
+
 	if it.reader.IsCompressed() {
 		decompressedKey, err := it.compressionManager.GetDecompressed(item.CompressedKey)
 		if err != nil {
@@ -166,23 +153,7 @@ func (it *SSIndexIterator) Next() (ISSTableItem, error) {
 		Tombstone:     record.tombstone,
 		Timestamp:     record.timestamp,
 	}
-	if record.recordType == FragmentTypePadding {
-		// Padding record, skip it
-		return it.Next() // Recursively call Next to get the next valid item
-	}
-	if record.recordType == FragmentTypeFirst {
-		for record.recordType != FragmentTypeLast {
-			record = &sstablerecord{
-				isCompressed: record.isCompressed,
-			}
-			err = record.read(file)
-			if err != nil {
-				return nil, err
-			}
-			sstableItem.Value = append(sstableItem.Value, record.value...)
-		}
-	}
-
+	
 	if it.reader.IsCompressed() {
 		decompressedKey, err := it.compressionManager.GetDecompressed(sstableItem.CompressedKey)
 		if err != nil {

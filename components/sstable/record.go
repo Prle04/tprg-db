@@ -8,17 +8,12 @@ import (
 )
 
 type sstablerecord struct {
-	recordType    uint8  // Type of the fragment
 	timestamp     uint64 // Timestamp of the fragment
 	tombstone     bool   // Tombstone flag
 	key           string // Key of the fragment
 	compressedKey uint64 // Int version of the key from global compression dictionary
 	value         []byte // Values of the fragment
 	isCompressed  bool   // Flag to indicate if compression is enabled
-}
-
-func (record *sstablerecord) size() uint64 {
-	return uint64(len(record.getData()))
 }
 
 func (record *sstablerecord) write(file *blockmanager.BlockedFile) error {
@@ -31,8 +26,6 @@ func (record *sstablerecord) write(file *blockmanager.BlockedFile) error {
 func (record *sstablerecord) getData() []byte {
 	data := make([]byte, 0)
 	variableBuffer := make([]byte, 8)
-	// type
-	data = append(data, serialization.UInt8ToBytes(record.recordType)...)
 	// timestamp
 	inserted := binary.PutUvarint(variableBuffer, record.timestamp)
 	data = append(data, variableBuffer[:inserted]...)
@@ -70,17 +63,6 @@ func (record *sstablerecord) read(file *blockmanager.BlockedFile) error {
 	}
 	crc := serialization.BytesToUInt64(crcBytes)
 	data := make([]byte, 0)
-	// read the type
-	typeByte, err2 := file.Read(uint64(TypeSize))
-	if err2 != nil {
-		return err2
-	}
-	data = append(data, typeByte...)
-	record.recordType = serialization.BytesToUInt8(typeByte)
-	// if the fragment is padding, we reached the end of the segment
-	if record.recordType == FragmentTypePadding {
-		return nil
-	}
 
 	// read the timestamp
 	timestampBytes, timestampValue, err3 := file.ReadUVariable()
@@ -140,10 +122,6 @@ func (record *sstablerecord) read(file *blockmanager.BlockedFile) error {
 		return &CRCError{}
 	}
 	return nil
-}
-
-func (record *sstablerecord) GetType() uint8 {
-	return record.recordType
 }
 
 func (record *sstablerecord) GetTimestamp() uint64 {

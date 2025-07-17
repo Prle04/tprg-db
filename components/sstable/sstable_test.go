@@ -426,6 +426,60 @@ func createMergeTest(t *testing.T, compressMerged bool, mergedMode string) {
 	}
 }
 
+func testSSTableReaderValidate(t *testing.T, mode string) {
+	testDir := setupTestDir(t)
+	defer cleanupTestDir(t, testDir)
+
+	compressionManager := NewCompressionMockup(true)
+
+	sstableManger := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
+
+	items, _ := generateItems(100, compressionManager)
+
+	// Create a test SSTable iterator
+	iterator := sstable.NewSSListIterator(items, compressionManager)
+
+	_, err := sstableManger.CreateSSTable("test-table-validate", iterator, uint64(len(items)))
+	if err != nil {
+		t.Fatalf("failed to create SSTable: %v", err)
+	}
+
+	reader := sstableManger.NewSSTableReader("test-table-validate")
+	if reader == nil {
+		t.Fatal("failed to create SSTable reader")
+	}
+
+	valid, err := reader.Validate()
+	if err != nil {
+		t.Fatalf("failed to validate SSTable: %v", err)
+	}
+	if !valid {
+		t.Fatal("SSTable validation failed")
+	}
+	file := BM.OpenBlockedFile(reader.GetFilePath() + "-data.db")
+	file.Seek(sstable.SSTableHeaderSize)
+	newData := make([]byte, 100)
+	for i := range newData {
+		newData[i] = byte(rand.Intn(256)) // Fill with some data
+	}
+	err = file.Write(newData)
+	if err != nil {
+		t.Fatalf("failed to write to SSTable file: %v", err)
+	}
+	err = file.Close()
+	if err != nil {
+		t.Fatalf("failed to close SSTable file: %v", err)
+	}
+	valid, err = reader.Validate()
+	if err != nil {
+		t.Fatalf("failed to validate SSTable after modification: %v", err)
+	}
+	if valid {
+		t.Fatal("SSTable validation should have failed after modification")
+	}
+	reader.Delete() // Clean up the SSTable after test
+}
+
 // CREATE TABLE TESTS
 
 func TestCreateSSTableWithCompressionOneFile(t *testing.T) {
@@ -484,4 +538,12 @@ func TestMergeSSTablesWithoutCompressionOneFile(t *testing.T) {
 }
 func TestMergeSSTablesWithoutCompressionMultiFile(t *testing.T) {
 	createMergeTest(t, false, sstable.MODE_MULTI_FILE)
+}
+
+// VALIDATE TESTS
+func TestSSTableReaderValidateOneFile(t *testing.T) {
+	testSSTableReaderValidate(t, sstable.MODE_ONE_FILE)
+}
+func TestSSTableReaderValidateMultiFile(t *testing.T) {
+	testSSTableReaderValidate(t, sstable.MODE_MULTI_FILE)
 }

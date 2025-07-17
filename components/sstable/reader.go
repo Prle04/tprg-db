@@ -1,11 +1,13 @@
 package sstable
 
 import (
+	"math"
 	"os"
 	ospath "path"
 	"strings"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/bloomfilter"
+	"tprgdb/components/merkletree"
 )
 
 type KeyBoundaries struct {
@@ -165,25 +167,7 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	result.Value = record.value
 	result.Tombstone = record.tombstone
 	result.Timestamp = record.timestamp
-	switch record.recordType {
-	case FragmentTypePadding:
-		// Padding record, skip it
-		return nil, nil
-	case FragmentTypeFull:
-		// Full record, return it
-		return result, nil
-	case FragmentTypeFirst:
-		for record.recordType != FragmentTypeLast {
-			err = record.read(valueFile)
-			if err != nil {
-				return nil, err
-			}
-			result.Value = append(result.Value, record.value...)
-		}
-		return result, nil
-	default:
-		return nil, &NotFirstFragment{fragmentType: record.recordType}
-	}
+	return result, nil
 }
 
 func (s *SSTableReader) GetNumberOfItems() (uint64, error) {
@@ -464,47 +448,41 @@ func (s *SSTableReader) GetFilePath() string {
 	return s.filePath
 }
 
-// func (s *SSTableReader) Validate() error {
-// 	header, err := s.getHeader()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	var merkleFile *blockmanager.BlockedFile
-// 	if s.mode == MODE_ONE_FILE {
-// 		// mode is "one-file"
-// 		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
-// 		merkleFile.Seek(header.MerkleStartOffset)
-// 	} else {
-// 		// mode is "multi-file"
-// 		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-merkle.db")
-// 	}
-// 	merkleTree := &merkletree.MerkleTree{}
-// 	err = merkleTree.DeserializeFromFile(merkleFile)
-// 	if err != nil {
-// 		merkleFile.Close()
-// 	}
-// 	merkleFile.Close()
-// 	builder := merkletree.NewMerkleTreeBuilder()
-// 	buffer := make([]byte, SegmentBlockSize)
-// 	dataFile := s.getDataFile()
-// 	var bytesRead uint64 = 0
-// 	for bytesRead < header.IndexStartOffset-SSTableHeaderSize {
-// 		toRead := SegmentBlockSize
-// 		remaining := header.IndexStartOffset - SSTableHeaderSize - bytesRead
-// 		if remaining < uint64(SegmentBlockSize) {
-// 			toRead = int(remaining)
-// 		}
-// 		n, err := dataFile.ReadAt(buffer[:toRead], int64(SSTableHeaderSize+bytesRead))
-// 		if err != nil && err.Error() != "EOF" {
-// 			return err
-// 		}
-// 		if n == 0 {
-// 			break
-// 		}
-// 		builder.AddChunk(buffer[:n])
-// 		bytesRead += uint64(n)
-// 	}
-// }
+func (s *SSTableReader) Validate() (bool, error) {
+	header, err := s.getHeader()
+	if err != nil {
+		return false, err
+	}
+	var merkleFile *blockmanager.BlockedFile
+	if s.mode == MODE_ONE_FILE {
+		// mode is "one-file"
+		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+		merkleFile.Seek(header.MerkleStartOffset)
+	} else {
+		// mode is "multi-file"
+		merkleFile = s.blockManager.OpenBlockedFile(s.filePath + "-metadata.db")
+	}
+	merkleTree := &merkletree.MerkleTree{}
+	err = merkleTree.DeserializeFromFile(merkleFile)
+	if err != nil {
+		merkleFile.Close()
+	}
+	merkleFile.Close()
+	dataFile := s.getDataFile()
+	builder := merkletree.NewMerkleTreeBuilder()
+	for dataFile.Tell() < header.IndexStartOffset {
+		toRead := uint64(math.Min(float64(SegmentBlockSize), float64(header.IndexStartOffset-dataFile.Tell())))
+		buffer, err := dataFile.Read(toRead)
+		if err != nil {
+			return false, err
+		}
+		builder.AddData(&buffer)
+	}
+
+	dataFile.Close()
+	newTree := builder.Build()
+	return newTree.GetRoot() == merkleTree.GetRoot(), nil // Compare the roots of the trees
+}
 
 func (s *SSTableReader) GetKeyBoundaries() (*KeyBoundaries, error) {
 	if s.keyBoundaries != nil {
