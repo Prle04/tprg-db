@@ -7,7 +7,7 @@ import (
 
 type Node struct {
 	key        string
-	value      int
+	value      uint64
 	height     int
 	leftChild  *Node
 	rightChild *Node
@@ -15,18 +15,18 @@ type Node struct {
 
 type Data struct {
 	key   string
-	value int
+	value uint64
 }
 
 func (d *Data) GetKey() string {
 	return d.key
 }
 
-func (d *Data) GetValue() int {
+func (d *Data) GetValue() uint64 {
 	return d.value
 }
 
-func createData(key string, value int) *Data {
+func createData(key string, value uint64) *Data {
 	return &Data{
 		key:   key,
 		value: value,
@@ -34,12 +34,14 @@ func createData(key string, value int) *Data {
 }
 
 type AVLTree struct {
-	root *Node
+	root             *Node
+	numberOfElements uint64
 }
 
 func CreateAVLTree() *AVLTree {
 	return &AVLTree{
-		root: nil,
+		root:             nil,
+		numberOfElements: 0,
 	}
 }
 
@@ -94,16 +96,17 @@ func rotateLeft(x *Node) *Node {
 	return y
 }
 
-func insert(node *Node, key string, value int) *Node {
+func (tree *AVLTree) insert(node *Node, key string, value uint64) *Node {
 	if node == nil {
+		tree.numberOfElements++
 		//Insertuje se novi node
 		return &Node{key: key, height: 1, value: value}
 	}
 
 	if key < node.key {
-		node.leftChild = insert(node.leftChild, key, value)
+		node.leftChild = tree.insert(node.leftChild, key, value)
 	} else if key > node.key {
-		node.rightChild = insert(node.rightChild, key, value)
+		node.rightChild = tree.insert(node.rightChild, key, value)
 	} else {
 		//Ako kljuc vec postoji samo vracamo trenutni node
 		return node
@@ -175,8 +178,9 @@ func postOrder(n *Node) {
 	}
 }
 
-func (tree *AVLTree) Insert(key string, value int) {
-	tree.root = insert(tree.root, key, value)
+func (tree *AVLTree) Insert(key string, value uint64) {
+	tree.root = tree.insert(tree.root, key, value)
+
 }
 
 func (tree *AVLTree) InOrder() {
@@ -212,16 +216,20 @@ func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []*Data {
 			helper(n.leftChild)
 		}
 
+		if len(result) == perPage {
+			return
+		}
+
 		if n.key >= lowerBound && n.key <= upperBound {
 			if strings.HasPrefix(n.key, prefix) {
 				if count >= startIndex {
 					newData := createData(n.key, n.value)
 					result = append(result, newData)
 				}
+				count++
 				if len(result) == perPage {
 					return
 				}
-				count++
 			}
 		}
 
@@ -246,20 +254,27 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
 			return
 		}
 
-		if n.key > from {
+		if n.key >= from {
 			scan(n.leftChild)
 		}
+
+		if len(result) == perPage {
+			return
+		}
+
 		if n.key >= from && n.key <= to {
 			if count >= startIndex {
 				newData := createData(n.key, n.value)
 				result = append(result, newData)
 			}
+
+			count++
+
 			if len(result) == perPage {
 				return
 			}
-			count++
 		}
-		if n.key < to {
+		if n.key <= to {
 			scan(n.rightChild)
 		}
 	}
@@ -268,6 +283,12 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
 	return result
 }
 
-func (tree *AVLTree) Find(key string) *Node {
-	return find(tree.root, key)
+func (tree *AVLTree) Find(key string) *Data {
+	node := find(tree.root, key)
+	return createData(node.key, node.value)
 }
+
+func (tree *AVLTree) GetNumberOfElements() uint64 {
+	return tree.numberOfElements
+}
+
