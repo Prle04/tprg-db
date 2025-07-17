@@ -3,7 +3,17 @@ package avltree
 import (
 	"fmt"
 	"strings"
+	"tprgdb/components/blockmanager"
 )
+
+const CURRENT_VERSION uint8 = 1
+
+type ISerializable interface {
+	SerializeToBytes() []byte
+	DeserializeFromBytes(data []byte)
+	SerializeToFile(file *blockmanager.BlockedFile) error
+	DeserializeFromFile(file *blockmanager.BlockedFile) error
+}
 
 type Node struct {
 	key        string
@@ -45,6 +55,7 @@ func CreateAVLTree() *AVLTree {
 	}
 }
 
+// ----------------------------- AVL LOGIKA -----------------------------
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -71,7 +82,6 @@ func updateHeight(n *Node) {
 }
 
 func rotateRight(y *Node) *Node {
-	//Ovde rotiram udesno
 	x := y.leftChild
 	T2 := x.rightChild
 
@@ -84,7 +94,6 @@ func rotateRight(y *Node) *Node {
 }
 
 func rotateLeft(x *Node) *Node {
-	//Rotira udesno
 	y := x.rightChild
 	T2 := y.leftChild
 
@@ -99,7 +108,6 @@ func rotateLeft(x *Node) *Node {
 func (tree *AVLTree) insert(node *Node, key string, value uint64) *Node {
 	if node == nil {
 		tree.numberOfElements++
-		//Insertuje se novi node
 		return &Node{key: key, height: 1, value: value}
 	}
 
@@ -108,33 +116,26 @@ func (tree *AVLTree) insert(node *Node, key string, value uint64) *Node {
 	} else if key > node.key {
 		node.rightChild = tree.insert(node.rightChild, key, value)
 	} else {
-		//Ako kljuc vec postoji samo vracamo trenutni node
 		return node
 	}
 
 	updateHeight(node)
 	balance := getBalance(node)
 
-	//Proveravamo da li je narusen balans
-
 	if balance > 1 && key < node.leftChild.key {
-		//Rotiramo desno
 		return rotateRight(node)
 	}
 
 	if balance < -1 && key > node.rightChild.key {
-		//rotiramo levo
 		return rotateLeft(node)
 	}
 
 	if balance > 1 && key > node.leftChild.key {
-		//Rotiramo levo pa desno
 		node.leftChild = rotateLeft(node.leftChild)
 		return rotateRight(node)
 	}
 
 	if balance < -1 && key < node.rightChild.key {
-		//Rotiramo desno pa levo
 		node.rightChild = rotateRight(node.rightChild)
 		return rotateLeft(node)
 	}
@@ -147,7 +148,7 @@ func find(node *Node, key string) *Node {
 		return nil
 	}
 	if key < node.key {
-		return find(node.rightChild.leftChild, key)
+		return find(node.leftChild, key)
 	} else if key > node.key {
 		return find(node.rightChild, key)
 	}
@@ -180,7 +181,6 @@ func postOrder(n *Node) {
 
 func (tree *AVLTree) Insert(key string, value uint64) {
 	tree.root = tree.insert(tree.root, key, value)
-
 }
 
 func (tree *AVLTree) InOrder() {
@@ -267,9 +267,7 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
 				newData := createData(n.key, n.value)
 				result = append(result, newData)
 			}
-
 			count++
-
 			if len(result) == perPage {
 				return
 			}
@@ -292,3 +290,159 @@ func (tree *AVLTree) GetNumberOfElements() uint64 {
 	return tree.numberOfElements
 }
 
+// ------------------ S E R I J A L I Z A C И Ј А ------------------
+/*
+func (tree *AVLTree) SerializeToBytes() []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(CURRENT_VERSION)
+
+	// broj elemenata
+	buf.Write(serialization.UVarInt(tree.numberOfElements))
+
+	// rekurzivno čvorovi
+	var serializeNode func(n *Node)
+	serializeNode = func(n *Node) {
+		if n == nil {
+			buf.WriteByte(0) // NIL marker
+			return
+		}
+		buf.WriteByte(1) // postoji čvor
+
+		keyBytes := []byte(n.key)
+		buf.Write(serialization.UVarInt(uint64(len(keyBytes))))
+		buf.Write(keyBytes)
+
+		buf.Write(serialization.UVarInt(n.value))
+		buf.Write(serialization.UVarInt(uint64(n.height)))
+
+		serializeNode(n.leftChild)
+		serializeNode(n.rightChild)
+	}
+
+	serializeNode(tree.root)
+	return buf.Bytes()
+}
+
+func (tree *AVLTree) DeserializeFromBytes(data []byte) {
+	if len(data) == 0 || data[0] != CURRENT_VERSION {
+		return
+	}
+	data = data[1:]
+
+	var idx int
+
+	readUVar := func() uint64 {
+		val, n := binary.Uvarint(data[idx:])
+		idx += n
+		return val
+	}
+	readBytes := func(length uint64) []byte {
+		res := data[idx : idx+int(length)]
+		idx += int(length)
+		return res
+	}
+
+	tree.numberOfElements = readUVar()
+
+	var deserializeNode func() *Node
+	deserializeNode = func() *Node {
+		if idx >= len(data) {
+			return nil
+		}
+		if data[idx] == 0 {
+			idx++
+			return nil
+		}
+		idx++ // skip marker
+
+		keyLen := readUVar()
+		key := string(readBytes(keyLen))
+		val := readUVar()
+		height := int(readUVar())
+
+		node := &Node{
+			key:    key,
+			value:  val,
+			height: height,
+		}
+		node.leftChild = deserializeNode()
+		node.rightChild = deserializeNode()
+		return node
+	}
+
+	tree.root = deserializeNode()
+}
+
+func (tree *AVLTree) SerializeToFile(file *blockmanager.BlockedFile) error {
+	data := tree.SerializeToBytes()
+	return file.Write(data)
+}
+
+func (tree *AVLTree) DeserializeFromFile(file *blockmanager.BlockedFile) error {
+	versionBytes, err := file.Read(1)
+	if err != nil {
+		return err
+	}
+	if versionBytes[0] != CURRENT_VERSION {
+		return errors.New("version mismatch")
+	}
+
+	tree.numberOfElements = 0
+
+	var deserializeNode func() (*Node, error)
+	deserializeNode = func() (*Node, error) {
+		marker, err := file.Read(1)
+		if err != nil {
+			return nil, err
+		}
+		if marker[0] == 0 {
+			return nil, nil
+		}
+
+		_, keyLen, err := file.ReadUVariable()
+		if err != nil {
+			return nil, err
+		}
+		keyBytes, err := file.Read(keyLen)
+		if err != nil {
+			return nil, err
+		}
+		key := string(keyBytes)
+
+		_, val, err := file.ReadUVariable()
+		if err != nil {
+			return nil, err
+		}
+
+		_, h, err := file.ReadUVariable()
+		if err != nil {
+			return nil, err
+		}
+
+		node := &Node{
+			key:    key,
+			value:  val,
+			height: int(h),
+		}
+
+		node.leftChild, err = deserializeNode()
+		if err != nil {
+			return nil, err
+		}
+		node.rightChild, err = deserializeNode()
+		if err != nil {
+			return nil, err
+		}
+
+		tree.numberOfElements++
+		return node, nil
+	}
+
+	root, err := deserializeNode()
+	if err != nil {
+		return err
+	}
+	tree.root = root
+	return nil
+}
+*/
