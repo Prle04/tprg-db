@@ -140,7 +140,7 @@ func TestCache(t *testing.T) {
 	if !ok || key != "d" || value != 4 {
 		t.Errorf("Expected to find element 'd' with value 4, got %s: %d", key, value)
 	}
-	key, value, ok = iterator.Next()
+	_, _, ok = iterator.Next()
 	if ok {
 		t.Error("Expected no more elements in the iterator after removing 'a'")
 	}
