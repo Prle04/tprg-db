@@ -17,7 +17,7 @@ const (
 )
 
 type LSM struct {
-	sstableManager      *sstable.SSTableMenager
+	sstableManager      *sstable.SSTableManager
 	compressionManager  sstable.ICompressionManager
 	blockManager        *blockmanager.BlockManager
 	folderPath          string
@@ -28,7 +28,7 @@ type LSM struct {
 	multiplier          int
 }
 
-func NewLSM(maxLevel int, folderPath string, algorithm string, blockManager *blockmanager.BlockManager, sstableManager *sstable.SSTableMenager,
+func NewLSM(maxLevel int, folderPath string, algorithm string, blockManager *blockmanager.BlockManager, sstableManager *sstable.SSTableManager,
 	compressionManager sstable.ICompressionManager, filePerLevel int, multiplier int) *LSM {
 	if algorithm != SIZE_TIERED && algorithm != LEVELED {
 		return nil

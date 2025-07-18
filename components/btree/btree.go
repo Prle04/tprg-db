@@ -8,6 +8,7 @@ import (
 type Element struct {
 	key       string
 	value     []byte
+	timestamp uint64
 	isDeleted bool
 }
 
@@ -32,9 +33,6 @@ func (tree *BTree) isTreeEmpty() bool {
 	return tree.root == nil
 }
 
-func isLeaf(n *Node) bool {
-	return len(n.children) == 0
-}
 
 func (tree *BTree) splitNode(node *Node) {
 	midIndex := len(node.keys) / 2
@@ -228,7 +226,7 @@ func (tree *BTree) Delete(key string) {
 	}
 }
 
-func (tree *BTree) Get(key string) []byte {
+func (tree *BTree) Get(key string) *Element {
 	if tree.isTreeEmpty() {
 		return nil
 	}
@@ -237,12 +235,7 @@ func (tree *BTree) Get(key string) []byte {
 	if currentNode == nil {
 		return nil
 	}
-
-	if !elem.isDeleted {
-		return elem.value
-	}
-
-	return nil
+	return elem
 }
 
 func (tree *BTree) Print() {
@@ -327,4 +320,17 @@ type MaxChildrenError struct{}
 
 func (m *MaxChildrenError) Error() string {
 	return "number of children must be positive integer!"
+}
+
+func (e *Element) GetKey() string {
+	return e.key
+}
+func (e *Element) GetValue() []byte {
+	return e.value
+}
+func (e *Element) IsDeleted() bool {
+	return e.isDeleted
+}
+func (e *Element) GetTimestamp() uint64 {
+	return e.timestamp
 }

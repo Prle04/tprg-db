@@ -8,6 +8,7 @@ type SkipListNode struct {
 	key       string
 	data      []byte
 	tombstone bool
+	timestamp uint64
 	right     *SkipListNode
 	down      *SkipListNode
 	up        *SkipListNode
@@ -189,3 +190,8 @@ func (sn *SkipListNode) GetValue() []byte {
 func (sn *SkipListNode) IsDeleted() bool {
 	return sn.tombstone
 }
+
+func (sn *SkipListNode) GetTimestamp() uint64 {
+	return sn.timestamp
+}
+

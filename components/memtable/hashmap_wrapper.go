@@ -1,7 +1,8 @@
-package hashmapwrapper
+package memtable
 
 import (
 	"sort"
+	"time"
 )
 
 // type MemtableStruct interface {
@@ -14,12 +15,13 @@ import (
 type element struct {
 	key       string
 	value     []byte
+	timestamp uint64
 	isDeleted bool
 }
 
 type HashMapWrapper struct {
 	store map[string]*element
-	size  uint64
+	size  int
 }
 
 func NewHashMapWrapper() *HashMapWrapper {
@@ -32,18 +34,20 @@ func NewHashMapWrapper() *HashMapWrapper {
 func (hm *HashMapWrapper) Set(key string, value []byte) {
 	if el, exists := hm.store[key]; exists {
 		el.isDeleted = false
+		el.timestamp = uint64(time.Now().Unix())
 		el.value = value
 	} else {
 		hm.store[key] = &element{
 			key:       key,
 			value:     value,
 			isDeleted: false,
+			timestamp: uint64(time.Now().Unix()),
 		}
 		hm.size++
 	}
 }
 
-func (hm *HashMapWrapper) Get(key string) *element {
+func (hm *HashMapWrapper) Get(key string) IMemtableItem {
 	if el, exists := hm.store[key]; exists {
 		return el
 	}
@@ -53,17 +57,19 @@ func (hm *HashMapWrapper) Get(key string) *element {
 func (hm *HashMapWrapper) Delete(key string) {
 	if el, exists := hm.store[key]; exists {
 		el.isDeleted = true
+		el.timestamp = uint64(time.Now().Unix())
 	} else {
 		hm.store[key] = &element{
 			key: key,
 			// value:     value,
 			isDeleted: true,
+			timestamp: uint64(time.Now().Unix()),
 		}
 		hm.size++
 	}
 }
 
-func (hm *HashMapWrapper) GetNumberOfKeys() uint64 {
+func (hm *HashMapWrapper) GetNumberOfKeys() int {
 	return hm.size
 }
 
@@ -76,19 +82,22 @@ func (e *element) GetValue() []byte {
 func (e *element) IsDeleted() bool {
 	return e.isDeleted
 }
+func (e *element) GetTimestamp() uint64 {
+	return e.timestamp
+}
 
 func (hm *HashMapWrapper) Clear() {
 	hm.store = make(map[string]*element)
 	hm.size = 0
 }
 
-func (hm *HashMapWrapper) GetAllItems() []*element {
-	var items []*element
+func (hm *HashMapWrapper) GetAllItems() []IMemtableItem {
+	var items []IMemtableItem
 	for _, el := range hm.store {
 		items = append(items, el)
 	}
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].key < items[j].key
+		return items[i].GetKey() < items[j].GetKey()
 	})
 	return items
 }

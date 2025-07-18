@@ -16,16 +16,16 @@ func TestBTree_Set(t *testing.T) {
 		t.Errorf("Tree should not be empty after insertions")
 	}
 
-	if value := tree.Get("key1"); string(value) != "value1" {
-		t.Errorf("Expected value1, got %s", value)
+	if el := tree.Get("key1"); string(el.GetValue()) != "value1" {
+		t.Errorf("Expected value1, got %s", el.GetValue())
 	}
 
-	if value := tree.Get("key2"); string(value) != "value2" {
-		t.Errorf("Expected value2, got %s", value)
+	if el := tree.Get("key2"); string(el.GetValue()) != "value2" {
+		t.Errorf("Expected value2, got %s", el.GetValue())
 	}
 
-	if value := tree.Get("key3"); string(value) != "value3" {
-		t.Errorf("Expected value3, got %s", value)
+	if el := tree.Get("key3"); string(el.GetValue()) != "value3" {
+		t.Errorf("Expected value3, got %s", el.GetValue())
 	}
 }
 
@@ -38,8 +38,8 @@ func TestBTree_Delete(t *testing.T) {
 
 	tree.Delete("key2")
 
-	if value := tree.Get("key2"); value != nil {
-		t.Errorf("Expected nil, got %s", value)
+	if el := tree.Get("key2"); !el.IsDeleted() {
+		t.Errorf("Expected to be deleted, got %t", el.IsDeleted())
 	}
 }
 
@@ -49,19 +49,19 @@ func TestBTree_Get(t *testing.T) {
 	tree.Set("key1", []byte("value1"))
 	tree.Set("key2", []byte("value2"))
 	fmt.Println("Set!")
-	if value := tree.Get("key1"); string(value) != "value1" {
-		t.Errorf("Expected value1, got %s", value)
+	if el := tree.Get("key1"); string(el.GetValue()) != "value1" {
+		t.Errorf("Expected value1, got %s", el.GetValue())
 	}
 	fmt.Println("Found1!")
 
-	if value := tree.Get("key2"); string(value) != "value2" {
-		t.Errorf("Expected value2, got %s", value)
+	if el := tree.Get("key2"); string(el.GetValue()) != "value2" {
+		t.Errorf("Expected value2, got %s", el.GetValue())
 	}
 	fmt.Println("found2!")
 
-	if value := tree.Get("key3"); value != nil {
-		fmt.Println(value)
-		t.Errorf("Expected nil, got %s", value)
+	if el := tree.Get("key3"); el != nil {
+		fmt.Println(el)
+		t.Errorf("Expected nil, got %s", el.GetKey())
 	}
 	fmt.Println("Found3!")
 }
