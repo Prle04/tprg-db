@@ -1,173 +1,171 @@
 package hyperloglog
 
 import (
-	"errors"
 	"fmt"
-	"os"
+	"io"
+	"math"
 	"tprgdb/components/hash"
 	"tprgdb/components/serialization"
 )
 
 type HyperLogLog struct {
-	bits     uint64
-	register []uint8
-	hashes   []hash.HashWithSeed
+	p, m    uint64
+	buckets []uint8
+	hashFun hash.HashWithSeed
 }
 
 const CURRENT_VERSION uint8 = 1
 
-// Kreiranje novog HyperLogLog objekta
-func NewHyperLogLog(bits uint64) HyperLogLog {
-	register := make([]uint8, 1<<bits)
-	hashes := hash.CreateHashFunctions(uint32(bits))
-	return HyperLogLog{
-		bits:     bits,
-		register: register,
-		hashes:   hashes,
+func New(bits uint64) HyperLogLog {
+	hll := HyperLogLog{
+		p:       bits,
+		m:       1 << bits,
+		buckets: make([]uint8, 1<<bits),
+		hashFun: hash.CreateHashFunctions(1)[0],
 	}
+	return hll
 }
 
-// Ubacivanje podataka u HyperLogLog
+func countTrailingZeros(v uint64) uint8 {
+
+	if v == 0 {
+		return 64
+	}
+
+	var (
+		x     uint64 = 1
+		count uint8  = 0
+	)
+
+	for {
+		rez := v & x
+		if rez != 0 {
+			break
+		}
+		x = x << 1
+		count++
+	}
+	return count
+}
+
 func (h *HyperLogLog) Insert(data []byte) {
-	for _, hfn := range h.hashes {
-		hashValue := hfn.Hash(data)
-		index := hashValue & uint64(len(h.register)-1)
-		leadingZeros := countLeadingZeros(hashValue)
-		if h.register[index] < leadingZeros {
-			h.register[index] = leadingZeros
-		}
+
+	hashValue := h.hashFun.Hash(data)
+	index := hashValue >> (64 - h.p)
+	leadingZeros := countTrailingZeros(hashValue) + 1 // Pomeri da ne računa indeks deo
+	if h.buckets[index] < leadingZeros {
+		h.buckets[index] = leadingZeros
 	}
+
 }
 
-/*
-// Estimacija broja jedinstvenih elemenata u HyperLogLog
-func (h *HyperLogLog) Estimate() float64 {
+func (h HyperLogLog) Estimate() float64 {
+	m := float64(h.m)
 	sum := 0.0
-	for _, reg := range h.register {
-		sum += float64(1 << reg) // računaj sumu
+	for _, b := range h.buckets {
+		sum += 1.0 / math.Pow(2, float64(b))
 	}
 
-	alphaMM := 0.7213 / (1 + 1.079/float64(1<<int(h.bits)))
-	return alphaMM * float64(len(h.register)) * float64(len(h.register)) / sum
-}
-*/
+	alpha := 0.7213 / (1 + 1.079/m)
+	estimate := alpha * m * m / sum
 
-// Pomoćna funkcija za brojanje vodećih nula
-func countLeadingZeros(value uint64) uint8 {
-	return uint8(64 - len(fmt.Sprintf("%b", value)))
+	return estimate
 }
 
-// Implementacija SerializeToBytes za HyperLogLog
-func (h *HyperLogLog) SerializeToBytes() []byte {
-	var result []byte
-	result = append(result, serialization.UInt8ToBytes(CURRENT_VERSION)...)
-	result = append(result, serialization.UInt64ToBytes(h.bits)...)
-	for _, hfn := range h.hashes {
-		result = append(result, hfn.Seed...)
-	}
-	for _, reg := range h.register {
-		result = append(result, serialization.UInt8ToBytes(reg)...)
-	}
-
-	return result
-}
-
-// Implementacija DeserializeFromBytes za HyperLogLog
-func (h *HyperLogLog) DeserializeFromBytes(data []byte) {
-	version := uint8(data[0])
-	if version != CURRENT_VERSION {
-		return
-	}
-	data = data[1:]
-
-	// Učitavamo broj bitova
-	h.bits = serialization.BytesToUInt64(data[:8])
-	data = data[8:]
-
-	// Učitavamo hash seedove
-	h.hashes = make([]hash.HashWithSeed, 1<<h.bits)
-	for i := range h.hashes {
-		h.hashes[i] = hash.HashWithSeed{Seed: data[:8]}
-		data = data[8:]
-	}
-
-	// Učitavamo registre
-	h.register = make([]uint8, 1<<h.bits)
-	for i := range h.register {
-		h.register[i] = serialization.BytesToUInt8(data[:1])
-		data = data[1:]
-	}
-}
-
-// Implementacija SerializeToFile za HyperLogLog
-func (h *HyperLogLog) SerializeToFile(file os.File) error {
-	_, err := file.Write(serialization.UInt8ToBytes(CURRENT_VERSION))
+func (h HyperLogLog) Save(file io.Writer) error {
+	bytes := serialization.UInt8ToBytes(CURRENT_VERSION)
+	n, err := file.Write(bytes)
 	if err != nil {
+		fmt.Println("failed to write version", err)
 		return err
 	}
-
-	_, err = file.Write(serialization.UInt64ToBytes(h.bits))
-	if err != nil {
-		return err
+	if n != len(bytes) {
+		return fmt.Errorf("saved only %d, expected %d", n, len(bytes))
 	}
 
-	for _, hfn := range h.hashes {
-		_, err = file.Write(hfn.Seed)
+	bytes = serialization.UInt64ToBytes(h.p)
+	n, err = file.Write(bytes)
+	if err != nil {
+		fmt.Println("failed to write p", err)
+		return err
+	}
+	if n != len(bytes) {
+		return fmt.Errorf("saved only %d, expected %d", n, len(bytes))
+	}
+
+	n, err = file.Write(h.hashFun.Seed)
+	if err != nil {
+		fmt.Println("failed to write seed", err)
+		return err
+	}
+	if n != len(h.hashFun.Seed) {
+		return fmt.Errorf("saved only %d, expected %d", n, len(h.hashFun.Seed))
+	}
+
+	for _, reg := range h.buckets {
+		n, err = file.Write(serialization.UInt8ToBytes(reg))
 		if err != nil {
+			fmt.Println("failed to write bucket", err)
 			return err
 		}
-	}
-
-	for _, reg := range h.register {
-		_, err = file.Write(serialization.UInt8ToBytes(reg))
-		if err != nil {
-			return err
+		if n != 1 {
+			return fmt.Errorf("saved only %d, expected 1", n)
 		}
 	}
 
 	return nil
 }
 
-// Implementacija DeserializeFromFile za HyperLogLog
-func (h *HyperLogLog) DeserializeFromFile(file os.File) error {
-	var buffer1 []byte = make([]byte, 1)
-	var buffer8 []byte = make([]byte, 8)
-
-	n, err := file.Read(buffer1)
-	if err != nil || n != 1 {
-		return errors.New("error reading version")
+func (h *HyperLogLog) Load(file io.Reader) error {
+	buffer1 := [1]byte{}
+	n, err := file.Read(buffer1[:])
+	if err != nil {
+		fmt.Println("failed to read version", err)
+		return err
 	}
-
-	version := serialization.BytesToUInt8(buffer1)
+	if n != len(buffer1) {
+		return fmt.Errorf("read only %d, expected %d", n, len(buffer1))
+	}
+	version := serialization.BytesToUInt8(buffer1[:])
 	if version != CURRENT_VERSION {
-		return errors.New("version mismatch")
+		return fmt.Errorf("got version %d, expected %d", version, CURRENT_VERSION)
 	}
 
-	// Učitavamo broj bitova
-	n, err = file.Read(buffer8)
-	if err != nil || n != 8 {
-		return errors.New("error reading bits")
+	buffer8 := [8]byte{}
+	n, err = file.Read(buffer8[:])
+	if err != nil {
+		fmt.Println("failed to read p", err)
+		return err
 	}
-	h.bits = serialization.BytesToUInt64(buffer8)
+	if n != len(buffer8) {
+		return fmt.Errorf("read only %d, expected %d", n, len(buffer8))
+	}
+	h.p = serialization.BytesToUInt64(buffer8[:])
 
-	// Učitavamo hash seedove
-	h.hashes = make([]hash.HashWithSeed, 1<<h.bits)
-	for i := range h.hashes {
-		n, err = file.Read(buffer8)
-		if err != nil || n != 8 {
-			return errors.New("error reading hash seed")
+	h.m = 1 << h.p
+
+	seed := make([]byte, 4)
+	n, err = file.Read(seed)
+	if err != nil {
+		fmt.Println("failed to read hash seed", err)
+		return err
+	}
+	if n != len(seed) {
+		return fmt.Errorf("read only %d, expected %d", n, len(seed))
+	}
+	h.hashFun = hash.HashWithSeed{Seed: seed}
+
+	h.buckets = make([]uint8, h.m)
+	for i := 0; i < int(h.m); i++ {
+		n, err = file.Read(buffer1[:])
+		if err != nil {
+			fmt.Println("failed to read bucket", err)
+			return err
 		}
-		h.hashes[i] = hash.HashWithSeed{Seed: buffer8}
-	}
-
-	// Učitavamo registre
-	h.register = make([]uint8, 1<<h.bits)
-	for i := range h.register {
-		n, err = file.Read(buffer1)
-		if err != nil || n != 1 {
-			return errors.New("error reading register")
+		if n != 1 {
+			return fmt.Errorf("read only %d, expected 1", n)
 		}
-		h.register[i] = serialization.BytesToUInt8(buffer1)
+		h.buckets[i] = serialization.BytesToUInt8(buffer1[:])
 	}
 
 	return nil
