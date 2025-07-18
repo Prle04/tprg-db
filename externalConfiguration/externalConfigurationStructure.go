@@ -7,17 +7,23 @@ import (
 )
 
 type ExternalConfiguration struct {
-	WALConfig          WALConfig          `json:"walConfig"`
-	MemtableConfig     MemtableConfig     `json:"memtableConfig"`
-	CacheConfig        CacheConfig        `json:"cacheConfig"`
-	BlockManagerConfig BlockManagerConfig `json:"blockManagerConfig"`
+	WAL          WALConfig          `json:"walConfig"`
+	Memtable     MemtableConfig     `json:"memtableConfig"`
+	Cache        CacheConfig        `json:"cacheConfig"`
+	BlockManager BlockManagerConfig `json:"blockManagerConfig"`
+	LSM          LSMConfig          `json:"lsmConfig"`
+	SSTable      SSTableConfig      `json:"sstableConfig"`
+	Compression  CompressionConfig  `json:"compressionConfig"`
 }
 
 func (ec *ExternalConfiguration) Validate() {
-	ec.WALConfig.Validate()
-	ec.MemtableConfig.Validate()
-	ec.CacheConfig.Validate()
-	ec.BlockManagerConfig.Validate()
+	ec.WAL.Validate()
+	ec.Memtable.Validate()
+	ec.Cache.Validate()
+	ec.BlockManager.Validate()
+	ec.LSM.Validate()
+	ec.SSTable.Validate()
+	ec.Compression.Validate()
 }
 
 func NewExternalConfiguration(filepath string) *ExternalConfiguration {
@@ -28,8 +34,7 @@ func NewExternalConfiguration(filepath string) *ExternalConfiguration {
 		data, err := os.ReadFile(filepath)
 		if err != nil {
 			config = &ExternalConfiguration{}
-		}
-		if err := json.Unmarshal(data, &config); err != nil {
+		} else if err := json.Unmarshal(data, &config); err != nil {
 			config = &ExternalConfiguration{}
 		}
 	}
