@@ -7,6 +7,7 @@ import (
 
 type ICompressionStruct interface {
 	Find(string) (uint64, error)
+	Add(string) uint64
 }
 
 type IDecompressionStruct interface {
@@ -78,4 +79,8 @@ func (cm *CompressionManager) DeserializeFromBytes(data []byte) {
 	cm.compressionStruct.DeserializeFromBytes(data)
 	data = data[len(cm.compressionStruct.SerializeToBytes()):]
 	cm.decompressionStruct.DeserializeFromBytes(data)
+}
+
+func (cm *CompressionManager) Add(key string) uint64 {
+	return cm.compressionStruct.Add(key)
 }

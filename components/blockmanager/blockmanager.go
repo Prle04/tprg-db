@@ -175,6 +175,10 @@ func (m *BlockManager) load(path string) (*Block, error) {
 	return block, nil
 }
 
+func (m *BlockManager) GetBlockSize() uint64 {
+	return m.blockSize
+}
+
 func getBlockPath(filename string, orderNumber uint64) string {
 	return filename + "+" + strconv.FormatUint(orderNumber, 10)
 }

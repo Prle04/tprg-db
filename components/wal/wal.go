@@ -2,12 +2,14 @@ package wal
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"tprgdb/components/blockmanager"
+	"tprgdb/components/serialization"
 )
 
 type WriteAheadLog struct {
@@ -20,8 +22,15 @@ type WriteAheadLog struct {
 }
 
 func NewWriteAheadLog(
-	walPath string, segmentSize uint64, blockSize uint64,
+	walPath string, segmentSize uint64,
 	paddingThreshold uint64, manager *blockmanager.BlockManager) (*WriteAheadLog, error) {
+
+	if _, err := os.Stat(walPath); os.IsNotExist(err) {
+		err := os.MkdirAll(walPath, 0777)
+		if err != nil {
+			log.Fatalf("Failed to create directory: %v", err)
+		}
+	}
 
 	// read all the files in the directory
 	entries, err := os.ReadDir(walPath)
@@ -52,7 +61,7 @@ func NewWriteAheadLog(
 	wal := &WriteAheadLog{
 		segmentSize:      segmentSize,
 		walPath:          walPath,
-		blockSize:        blockSize,
+		blockSize:        manager.GetBlockSize(),
 		paddingThreshold: paddingThreshold,
 		manager:          manager,
 	}
@@ -60,7 +69,7 @@ func NewWriteAheadLog(
 	if len(filepaths) != 0 {
 		// open the last segment
 		segmentFile := manager.OpenBlockedFile(filepaths[len(filepaths)-1])
-		currentSegment, segErr := newWALSegment(segmentFile, segmentSize, blockSize, paddingThreshold)
+		currentSegment, segErr := newWALSegment(segmentFile, segmentSize, manager.GetBlockSize(), paddingThreshold)
 		if segErr != nil {
 			return nil, segErr
 		}
@@ -143,8 +152,9 @@ func (wal *WriteAheadLog) GetCurrentSegmentNumber() uint64 {
 }
 
 type WALIterator struct {
-	Record *walrecord
-	Err    error
+	Record        *walrecord
+	SegmentNumber uint64
+	Err           error
 }
 
 func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
@@ -167,7 +177,12 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 			}
 			filepath := path.Join(wal.walPath, v.Name())
 			file := wal.manager.OpenBlockedFile(filepath)
-			file.Seek(uint64(SegmentNumberSize))
+			segmentNumberBytes, err := file.Read(uint64(SegmentNumberSize))
+			if err != nil {
+				ch <- &WALIterator{Err: err}
+				return
+			}
+			currentSegmentNumber := serialization.BytesToUInt64(segmentNumberBytes)
 			for file.Tell() < wal.segmentSize*wal.blockSize {
 				record := &walrecord{}
 				err := record.read(file)
@@ -178,6 +193,10 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 				if record.recordType == FragmentTypePadding {
 					break
 				}
+				if record.recordType == FragmentTypeFull {
+					ch <- &WALIterator{Record: record, SegmentNumber: currentSegmentNumber}
+					continue
+				}
 				if record.recordType == FragmentTypeMiddle || record.recordType == FragmentTypeLast {
 					if lastRecord == nil {
 						ch <- &WALIterator{Err: &NotFirstFragment{fragmentType: record.recordType}}
@@ -185,7 +204,7 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 					}
 					lastRecord.value = append(lastRecord.value, record.value...)
 					if record.recordType == FragmentTypeLast {
-						ch <- &WALIterator{Record: lastRecord}
+						ch <- &WALIterator{Record: lastRecord, SegmentNumber: currentSegmentNumber}
 						lastRecord = nil
 					}
 				} else {
@@ -195,4 +214,35 @@ func (wal *WriteAheadLog) Iterate() <-chan *WALIterator {
 		}
 	}()
 	return ch
+}
+
+func (wal *WriteAheadLog) DeleteUntil(segmentNumber uint64) error {
+	entries, err := os.ReadDir(wal.walPath)
+	if err != nil {
+		return err
+	}
+	for _, v := range entries {
+		if v.IsDir() {
+			continue
+		}
+		if filepath.Ext(v.Name()) != ".wal" && !strings.HasPrefix(v.Name(), "wal_") {
+			continue
+		}
+		filepath := path.Join(wal.walPath, v.Name())
+		file := wal.manager.OpenBlockedFile(filepath)
+		segmentNumberBytes, err := file.Read(uint64(SegmentNumberSize))
+		if err != nil {
+			return err
+		}
+		currentSegmentNumber := serialization.BytesToUInt64(segmentNumberBytes)
+		if currentSegmentNumber < segmentNumber {
+			// delete the file
+			file.Close()
+			err = os.Remove(filepath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -16,7 +16,7 @@ var BM = blockmanager.NewBlockManager(2048, 128)
 
 func setupTestDir(t *testing.T) string {
 	testDir := "test-temp-" + randomString(5)
-	err := os.Mkdir(testDir, 0o755)
+	err := os.MkdirAll(testDir, 0o755)
 	if err != nil {
 		t.Fatalf("failed to create test dir: %v", err)
 	}

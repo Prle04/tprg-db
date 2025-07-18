@@ -19,13 +19,10 @@ func NewHashMapCompression() *HashMapCompression {
 }
 
 func (h *HashMapCompression) Find(key string) (uint64, error) {
-	value, exists := h.data[key]
-	if exists {
+	if value, exists := h.data[key]; exists {
 		return value, nil
 	}
-	nextValue := uint64(len(h.data) + 1)
-	h.data[key] = nextValue
-	return nextValue, nil
+	return 0, fmt.Errorf("key %s not found in compression dictionary", key)
 }
 func (h *HashMapCompression) SerializeToBytes() []byte {
 	data := make([]byte, 0)
@@ -81,6 +78,15 @@ func (h *HashMapCompression) DeserializeFromFile(file *blockmanager.BlockedFile)
 		h.data[key] = value
 	}
 	return nil
+}
+
+func (h *HashMapCompression) Add(key string) uint64 {
+	if value, exists := h.data[key]; exists {
+		return value
+	}
+	compressedKey := uint64(len(h.data) + 1) // Simple incremental compression
+	h.data[key] = compressedKey
+	return compressedKey
 }
 
 // DECOMPRESSION STRUCTURE

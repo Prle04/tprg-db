@@ -1,16 +1,20 @@
 package core
 
 import (
+	"fmt"
+	"time"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/compression"
 	"tprgdb/components/lrucache"
 	"tprgdb/components/lsm"
 	"tprgdb/components/memtable"
 	"tprgdb/components/sstable"
+	walPackage "tprgdb/components/wal"
 	externalconfiguration "tprgdb/engine/externalConfiguration"
 )
 
 type Core struct {
+	wal                *walPackage.WriteAheadLog
 	blockManager       *blockmanager.BlockManager
 	lsm                *lsm.LSM
 	compressionManager *compression.CompressionManager
@@ -23,8 +27,15 @@ type Core struct {
 
 func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error) {
 
-	blockManager := blockmanager.NewBlockManager(uint64(config.BlockManager.BlockSizeBytes), uint64(config.BlockManager.MaxElements))
+	blockSize := uint64(config.BlockManager.BlockSizeBytes)
 
+	blockManager := blockmanager.NewBlockManager(blockSize, uint64(config.BlockManager.MaxElements))
+
+	paddingThreshold := uint64(0.1 * float64(blockSize))
+	wal, err := walPackage.NewWriteAheadLog(config.WAL.WALFolder, uint64(config.WAL.NumberOfBlocksPerSegment), paddingThreshold, blockManager)
+	if err != nil {
+		return nil, err
+	}
 	compressionStruct := compression.NewHashMapCompression()
 	decompressionStruct := compression.NewHashMapDecompression()
 	compressionManager := compression.NewCompressionManager(compressionStruct, decompressionStruct, config.Compression.Enabled)
@@ -45,11 +56,30 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 	lsm := lsm.NewLSM(config.LSM.MaxLevels, config.LSM.FolderPath, config.LSM.Algorithm, blockManager, sstableManager, compressionManager, filesPerLevel, multiplier)
 
 	memtable, err := memtable.NewMemtable(config.Memtable.NumberOfInstances, config.Memtable.Threshld, CreateInstance(&config.Memtable))
-
 	if err != nil {
 		return nil, err
 	}
+
+	for it := range wal.Iterate() {
+		if it.Err != nil {
+			return nil, it.Err
+		}
+		if it.Record == nil {
+			return nil, fmt.Errorf("nil record found in WAL")
+		}
+		if it.Record.GetTombstone() {
+			if err := memtable.Delete(it.Record.GetKey(), it.SegmentNumber); err != nil {
+				return nil, fmt.Errorf("error setting deleted item in memtable: %w", err)
+			}
+		} else {
+			if err := memtable.Set(it.Record.GetKey(), it.Record.GetValue(), it.SegmentNumber); err != nil {
+				return nil, fmt.Errorf("error setting item in memtable: %w", err)
+			}
+		}
+	}
+
 	return &Core{
+		wal:                wal,
 		blockManager:       blockManager,
 		lsm:                lsm,
 		compressionManager: compressionManager,
@@ -93,6 +123,80 @@ func (c *Core) Get(key string) (*Item, error) {
 		return item, nil
 	}
 	return nil, nil
+}
+func (c *Core) Set(key string, value []byte) error {
+
+	compressedKey := c.compressionManager.Add(key)
+	if err := c.wal.Add(key, value); err != nil {
+		return err
+	}
+	if err := c.memtable.Set(key, value, c.wal.GetCurrentSegmentNumber()); err != nil {
+		return err
+	}
+
+	c.updateCache(key, value, uint64(time.Now().Unix()), false)
+
+	if err := c.flush(compressedKey); err != nil {
+		return err
+	}
+
+	return nil
+}
+func (c *Core) Delete(key string) error {
+
+	compressedKey := c.compressionManager.Add(key)
+	if err := c.wal.Delete(key); err != nil {
+		return err
+	}
+	if err := c.memtable.Delete(key, c.wal.GetCurrentSegmentNumber()); err != nil {
+		return err
+	}
+
+	c.updateCache(key, nil, uint64(time.Now().Unix()), true)
+
+	if err := c.flush(compressedKey); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Core) updateCache(key string, value []byte, timestamp uint64, tombstone bool) {
+	if c.cache.Exists(key) {
+		item := &Item{
+			key:       key,
+			value:     nil,
+			timestamp: uint64(time.Now().Unix()),
+			tombstone: true,
+		}
+		if added, _ := c.cache.AddElement(key, item); !added {
+			// If item was not updated in the cache, it means we have a stale
+			// item in the cache, so we need to remove it
+			c.cache.RemoveElement(key)
+		}
+	}
+}
+
+func (c *Core) flush(compressedKey uint64) error {
+	for items, lastSegment := c.memtable.Flush(); items != nil; items, lastSegment = c.memtable.Flush() {
+		data := make([]sstable.ISSTableItem, len(items))
+		for i, item := range items {
+			data[i] = &sstable.SSItem{
+				Key:           item.GetKey(),
+				CompressedKey: compressedKey,
+				Value:         item.GetValue(),
+				Timestamp:     item.GetTimestamp(),
+				Tombstone:     item.IsDeleted(),
+			}
+		}
+		c.lsm.AddTable(data)
+		err := c.lsm.Save()
+		if err != nil {
+			return err
+		}
+		c.wal.DeleteUntil(lastSegment)
+	}
+	return nil
 }
 
 type Item struct {

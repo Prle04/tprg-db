@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"os"
 	"sort"
-	"strings"
 	"time"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/lsm"
@@ -30,7 +29,7 @@ var BM = blockmanager.NewBlockManager(2048, 128)
 
 // func setupTestDir() {
 // 	testDir = filepath.Join("test-temp")
-// 	err := os.Mkdir(testDir, 0o755)
+// 	err := os.MkdirAll(testDir, 0o755)
 // 	if err != nil {
 // 		panic(err.Error())
 // 	}
@@ -63,10 +62,6 @@ func (item testItem) GetCompressedKey() uint64 {
 
 func (item testItem) GetValue() []byte {
 	return item.value
-	return []byte(strings.Repeat(item.key, 100))
-	// length := rand.Intn(100) + 1 // Random length between 1 and 100
-	// str := randomString(length)
-	// return []byte(str)
 }
 
 func (item testItem) GetTimestamp() uint64 {
