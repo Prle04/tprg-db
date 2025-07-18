@@ -8,20 +8,16 @@ import (
 )
 
 type BlockManager struct {
-	blockSize   uint64
-	maxSize     uint64
-	currentSize uint64
-	blocks      map[string]*Block
-	cache       *lrucache.LRUCache[*Block]
+	blockSize uint64
+	maxSize   uint64
+	cache     *lrucache.LRUCache[*Block]
 }
 
 func NewBlockManager(blockSize uint64, maxSize uint64) *BlockManager {
 	return &BlockManager{
-		blockSize:   blockSize,
-		maxSize:     maxSize,
-		currentSize: 0,
-		blocks:      make(map[string]*Block),
-		cache:       lrucache.NewLRUCache[*Block](maxSize),
+		blockSize: blockSize,
+		maxSize:   maxSize,
+		cache:     lrucache.NewLRUCache[*Block](maxSize),
 	}
 }
 
@@ -36,7 +32,7 @@ func (m *BlockManager) OpenBlockedFile(path string) *BlockedFile {
 
 func (m *BlockManager) getBlock(path string) (*Block, error) {
 	// Block is already in the cache
-	if block, ok := m.blocks[path]; ok {
+	if block, ok := m.cache.GetElement(path); ok {
 		return block, nil
 	}
 	// Block is not cached so we load it from the file
@@ -44,10 +40,7 @@ func (m *BlockManager) getBlock(path string) (*Block, error) {
 }
 
 func (m *BlockManager) addBlock(block *Block) error {
-	if _, ok := m.blocks[block.GetPath()]; !ok {
-		m.currentSize++
-	}
-	m.blocks[block.GetPath()] = block
+
 	evicted, evictedPath := m.cache.AddElement(block.GetPath(), block)
 	if evicted {
 		err := m.syncBlock(evictedPath)
@@ -60,16 +53,11 @@ func (m *BlockManager) addBlock(block *Block) error {
 }
 
 func (m *BlockManager) removeBlock(path string) {
-	if _, ok := m.blocks[path]; !ok {
-		return
-	}
 	m.cache.RemoveElement(path)
-	delete(m.blocks, path)
-	m.currentSize--
 }
 
 func (m *BlockManager) syncBlock(path string) error {
-	block, ok := m.blocks[path]
+	block, ok := m.cache.GetElement(path)
 	if !ok {
 		return nil
 	}
@@ -96,7 +84,8 @@ func (m *BlockManager) syncBlock(path string) error {
 func (m *BlockManager) syncFile(filename string) error {
 	blocks := make([]*Block, 0)
 
-	for _, block := range m.blocks {
+	iterator := m.cache.GetIterator()
+	for _, block, ok := iterator.Next(); ok; _, block, ok = iterator.Next() {
 		if block.filename == filename {
 			blocks = append(blocks, block)
 		}
@@ -124,7 +113,8 @@ func (m *BlockManager) closeFile(filepath string) error {
 	if syncErr != nil {
 		return syncErr
 	}
-	for blockpath, block := range m.blocks {
+	iterator := m.cache.GetIterator()
+	for blockpath, block, ok := iterator.Next(); ok; blockpath, block, ok = iterator.Next() {
 		if block.filename == filepath {
 			m.removeBlock(blockpath)
 		}
@@ -133,7 +123,8 @@ func (m *BlockManager) closeFile(filepath string) error {
 }
 
 func (m *BlockManager) deleteFile(filepath string) error {
-	for _, block := range m.blocks {
+	iterator := m.cache.GetIterator()
+	for _, block, ok := iterator.Next(); ok; _, block, ok = iterator.Next() {
 		if block.filename == filepath {
 			m.removeBlock(block.filename)
 		}
