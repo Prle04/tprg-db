@@ -111,6 +111,7 @@ package lsm
 //}
 
 import (
+	"sort"
 	"strconv"
 	"testing"
 	"tprgdb/components/blockmanager"
@@ -332,5 +333,57 @@ func TestGetMissingKey(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("Expected nil for missing key, got %+v", got)
+	}
+}
+
+// --- Test GetMany with multiple keys ---
+func TestGetMany(t *testing.T) {
+	tree := newTestLSM(t, 3, SIZE_TIERED, 2, 10)
+
+	// Add some items
+	for i := 0; i < 5; i++ {
+		item := &mockItem{
+			key:           "key" + strconv.Itoa(i),
+			value:         []byte("value" + strconv.Itoa(i)),
+			compressedKey: uint64(1000 + i),
+			timestamp:     uint64(i + 1),
+		}
+		err := tree.AddTable([]sstable.ISSTableItem{item})
+		if err != nil {
+			t.Fatalf("AddTable failed: %v", err)
+		}
+	}
+
+	keys := []string{"key1", "key3", "missing"}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	results, err := tree.GetMany(keys)
+	if err != nil {
+		t.Fatalf("GetMany failed: %v", err)
+	}
+
+	if len(results) != len(keys) {
+		t.Fatalf("Expected %d results, got %d", len(keys), len(results))
+	}
+
+	expectedValues := map[string]string{
+		"key1": "value1",
+		"key3": "value3",
+	}
+
+	for i, key := range keys {
+		if result := results[i]; result != nil {
+			if expected, ok := expectedValues[key]; ok {
+				if string(result.GetValue()) != expected {
+					t.Errorf("For key %s expected value %s but got %s", key, expected, string(result.GetValue()))
+				}
+			} else {
+				t.Errorf("Unexpected result for key %s: %+v", key, result)
+			}
+		} else if _, ok := expectedValues[key]; ok {
+			t.Errorf("Expected value for key %s but got nil", key)
+		}
 	}
 }

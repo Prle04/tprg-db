@@ -81,6 +81,47 @@ func (lsm *LSM) Get(key string) (sstable.ISSTableItem, error) {
 	return nil, nil
 }
 
+func (lsm *LSM) GetMany(keys []string) ([]sstable.ISSTableItem, error) {
+	results := make([]sstable.ISSTableItem, len(keys))
+	indexMap := make(map[string]int, len(keys))
+	for i, key := range keys {
+		indexMap[key] = i
+		results[i] = nil // Initialize results with nil
+	}
+	searchKeys := keys
+	for _, level := range lsm.tables {
+		for i := len(level) - 1; i >= 0; i-- {
+			if len(searchKeys) == 0 {
+				return results, nil
+			}
+			reader := level[i]
+			res, err := reader.GetMany(searchKeys)
+			if err != nil {
+				return nil, err
+			}
+			newSearchKeys := make([]string, 0, len(searchKeys))
+			for j, item := range res {
+				if item != nil {
+					key := item.GetKey()
+					if index, exists := indexMap[key]; exists {
+						results[index] = item
+					}
+				} else {
+					// If the item is nil, it means the key was not found in this table
+					// We can skip it for the next iterations
+					newSearchKeys = append(newSearchKeys, searchKeys[j])
+				}
+			}
+			// Update searchKeys to only those that were not found in this table
+			searchKeys = newSearchKeys
+			if len(searchKeys) == 0 {
+				return results, nil
+			}
+		}
+	}
+	return results, nil
+}
+
 func (lsm *LSM) Save() error {
 	filepath := path.Join(lsm.folderPath, FILE_NAME)
 	file := lsm.blockManager.OpenBlockedFile(filepath)
@@ -168,8 +209,8 @@ func (lsm *LSM) compact() error {
 
 func (l *LSM) leveledCompaction() error {
 	for level := 0; level < l.maxLevel-1; level++ {
-		if l.shouldCompactSized(level) {
-			err := l.mergeSizeTier(level)
+		if l.shouldCompactLeveled(level) {
+			err := l.mergeLeveled(level)
 			if err != nil {
 				return err
 			}

@@ -169,6 +169,133 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	return result, nil
 }
 
+type manyHelperStruct struct {
+	key         string
+	index       int     // Index in the original keys slice
+	indexOffset uint64  // Offset in the index file where the item starts
+	dataOffset  *uint64 // Offset in the data file where the value starts
+}
+
+func (s *SSTableReader) GetMany(keys []string) ([]*SSItem, error) {
+	results := make([]*SSItem, len(keys))
+	header, err := s.getHeader()
+	if err != nil {
+		return nil, err
+	}
+	filter, err := s.getBloomFilter()
+	if err != nil {
+		return nil, err
+	}
+	indecies := make([]manyHelperStruct, 0, len(keys))
+	for i, key := range keys {
+		if !filter.IsNotIn([]byte(key)) {
+			indecies = append(indecies, manyHelperStruct{
+				key:         key,
+				index:       i,
+				indexOffset: 0,   // Will be set later
+				dataOffset:  nil, // Will be set later
+			}) // Only consider keys that are in the Bloom filter
+		}
+	}
+	if len(indecies) == 0 {
+		return results, nil // No keys to search for
+	}
+	summary, err := s.getSummary()
+	if err != nil {
+		return nil, err
+	}
+	if indecies[len(indecies)-1].key < summary.minKey.Key || indecies[0].key > summary.maxKey.Key {
+		return results, nil // All keys are out of range of the SSTable
+	}
+	currentKeyIndex := 0
+	for _, item := range summary.index {
+		if indecies[currentKeyIndex].key >= item.Key {
+			indecies[currentKeyIndex].indexOffset = item.Offset
+			currentKeyIndex++
+			if currentKeyIndex >= len(indecies) {
+				break // All keys have been processed
+			}
+		}
+	}
+	// File that will be used to read the index
+	var indexFile *blockmanager.BlockedFile
+	var indexStartingOffset uint64
+	if s.mode == MODE_ONE_FILE {
+		// mode is "one-file"
+		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+		indexStartingOffset = header.IndexStartOffset // Total offset in the data file
+	} else {
+		// mode is "multi-file"
+		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-index.db")
+		indexStartingOffset = 0
+	}
+	i := 0
+	var currentIndexItem *SSTableIndexItem
+	for i < len(indecies) {
+		// We are looking for a indecies[i]
+
+		// If the previous item had the same index offset, we don't need to reset to
+		// the same index offset and loop though the same items again
+		if (i == 0 && currentIndexItem == nil) || (i > 0 && indecies[i].indexOffset != indecies[i-1].indexOffset) {
+			indexFile.Seek(indecies[i].indexOffset + indexStartingOffset)
+		}
+		currentIndexItem = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+		err = currentIndexItem.DeserializeFromFile(indexFile)
+		if err != nil {
+			if err == blockmanager.EOF {
+				break // No more items in the index file
+			}
+			return nil, err
+		}
+		if s.IsCompressed() {
+			// Decompress the key if compression is enabled
+			decompressedKey, err := s.compressionManager.GetDecompressed(currentIndexItem.CompressedKey)
+			if err != nil {
+				return nil, err
+			}
+			currentIndexItem.Key = decompressedKey
+		}
+		if currentIndexItem.Key == indecies[i].key {
+			// Found the item with the key
+			indecies[i].dataOffset = new(uint64)                                  // Allocate memory for the data offset
+			*indecies[i].dataOffset = currentIndexItem.Offset + SSTableHeaderSize // Offset in the data file
+			i++                                                                   // Move to the next key
+			continue
+		}
+		if currentIndexItem.Key > indecies[i].key {
+			// Key not found in the index, move to the next key
+			i++
+			continue
+		}
+	}
+	dataFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+	dataFile.Seek(SSTableHeaderSize) // Skip the header
+	for _, item := range indecies {
+		if item.dataOffset == nil {
+			continue // This key was not found in the index
+		}
+		dataFile.Seek(*item.dataOffset) // Seek to the value offset in the data file
+		record := &sstablerecord{isCompressed: header.IsCompressionEnabled}
+		err = record.read(dataFile)
+		if err != nil {
+			if err == blockmanager.EOF {
+				continue // No more items in the data file
+			}
+			return nil, err
+		}
+		result := &SSItem{
+			Key:           item.key,
+			CompressedKey: record.compressedKey,
+			Tombstone:     record.tombstone,
+			Timestamp:     record.timestamp,
+			Value:         record.value,
+		}
+		results[item.index] = result // Place the result in the correct index
+	}
+
+	return results, nil // No items found for the keys
+}
+
 func (s *SSTableReader) GetNumberOfItems() (uint64, error) {
 	header, err := s.getHeader()
 	if err != nil {
