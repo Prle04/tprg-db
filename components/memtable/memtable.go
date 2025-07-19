@@ -8,6 +8,7 @@ import (
 type IMemtableItem interface {
 	GetKey() string
 	GetValue() []byte
+	GetTimestamp() uint64
 	IsDeleted() bool
 }
 
@@ -46,12 +47,12 @@ type Memtable struct {
 }
 
 // type of a function that creates a new instance of MemtableDataStructure.
-type newInstanceFunc func() (IMemtableDataStructure, error)
+type NewInstanceFunc func() (IMemtableDataStructure, error)
 
 func NewMemtable(
 	numberOfInstances int,
 	threshold int,
-	newInstance newInstanceFunc,
+	newInstance NewInstanceFunc,
 ) (*Memtable, error) {
 	if numberOfInstances <= 0 {
 		return nil, errors.New("number of instances must be greater than zero")

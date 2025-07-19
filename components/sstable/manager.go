@@ -2,7 +2,7 @@ package sstable
 
 import "tprgdb/components/blockmanager"
 
-type SSTableMenager struct {
+type SSTableManager struct {
 	folderPath            string
 	blockManager          *blockmanager.BlockManager
 	compressionManager    ICompressionManager
@@ -10,8 +10,8 @@ type SSTableMenager struct {
 	mode                  string // "one-file" or "multi-file"
 }
 
-func NewSSTableManager(folderPath string, mode string, summaryDilutionFactor uint8, blockManager *blockmanager.BlockManager, compressionManager ICompressionManager) *SSTableMenager {
-	return &SSTableMenager{
+func NewSSTableManager(folderPath string, mode string, summaryDilutionFactor uint8, blockManager *blockmanager.BlockManager, compressionManager ICompressionManager) *SSTableManager {
+	return &SSTableManager{
 		summaryDilutionFactor: summaryDilutionFactor,
 		folderPath:            folderPath,
 		blockManager:          blockManager,
@@ -20,15 +20,15 @@ func NewSSTableManager(folderPath string, mode string, summaryDilutionFactor uin
 	}
 }
 
-func (m *SSTableMenager) NewSSTableReader(tableName string) *SSTableReader {
+func (m *SSTableManager) NewSSTableReader(tableName string) *SSTableReader {
 	return newSSTableReader(m.folderPath, tableName, m.blockManager, m.compressionManager)
 }
 
-func (m *SSTableMenager) CreateSSTable(tableName string, dataIterator ISSTableIterator, maxNumberOfElements uint64) (*SSTableReader, error) {
+func (m *SSTableManager) CreateSSTable(tableName string, dataIterator ISSTableIterator, maxNumberOfElements uint64) (*SSTableReader, error) {
 	return flushToSSTable(dataIterator, maxNumberOfElements, m.folderPath, tableName, m.summaryDilutionFactor, m.mode, m.compressionManager, m.blockManager)
 }
 
-func (m *SSTableMenager) MergeSSTables(newTableName string, readers []*SSTableReader) (*SSTableReader, error) {
+func (m *SSTableManager) MergeSSTables(newTableName string, readers []*SSTableReader) (*SSTableReader, error) {
 	if len(readers) == 0 {
 		return nil, nil // No readers to merge
 	}

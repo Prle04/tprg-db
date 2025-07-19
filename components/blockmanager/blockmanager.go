@@ -175,6 +175,10 @@ func (m *BlockManager) load(path string) (*Block, error) {
 	return block, nil
 }
 
+func (m *BlockManager) GetBlockSize() uint64 {
+	return m.blockSize
+}
+
 func getBlockPath(filename string, orderNumber uint64) string {
 	return filename + "+" + strconv.FormatUint(orderNumber, 10)
 }
@@ -194,4 +198,14 @@ func getBlockOrderNumber(path string) (uint64, error) {
 func getBlockFilename(path string) string {
 	split := strings.Split(path, "+")
 	return strings.Join(split[:len(split)-1], "+")
+}
+
+func (m *BlockManager) Close() error {
+	var resErr error = nil
+	for _, block, ok := m.cache.GetIterator().Next(); ok; _, block, ok = m.cache.GetIterator().Next() {
+		if err := m.syncBlock(block.GetPath()); err != nil {
+			resErr = err
+		}
+	}
+	return resErr
 }

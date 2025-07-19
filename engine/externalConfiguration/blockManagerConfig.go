@@ -2,7 +2,7 @@ package externalconfiguration
 
 type BlockManagerConfig struct {
 	BlockSize      string `json:"blockSize"`
-	BlockSizeBytes int    `json:"blockSizeBytes"`
+	BlockSizeBytes int    
 	MaxElements    int    `json:"maxElements"`
 }
 

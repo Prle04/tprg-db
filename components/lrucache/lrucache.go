@@ -155,3 +155,8 @@ func (c *LRUCache[T]) GetIterator() *LRUIterator[T] {
 func (c *LRUCache[T]) Size() uint64 {
 	return c.currentSize
 }
+
+func (c *LRUCache[T]) Exists(key string) bool {
+	_, exists := c.cache[key]
+	return exists
+}
