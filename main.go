@@ -62,6 +62,10 @@ func (item testItem) GetCompressedKey() uint64 {
 
 func (item testItem) GetValue() []byte {
 	return item.value
+	// return []byte(strings.Repeat(item.key, 100))
+	// length := rand.Intn(100) + 1 // Random length between 1 and 100
+	// str := randomString(length)
+	// return []byte(str)
 }
 
 func (item testItem) GetTimestamp() uint64 {
@@ -287,8 +291,12 @@ func LSMTest() {
 		panic("Get failed: expected 'bar', got " + string(got.GetValue()))
 	}
 	fmt.Println("OK")
-
 }
+
+type Test struct {
+	a int
+}
+
 func main() {
 
 	LSMTest()

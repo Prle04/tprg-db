@@ -152,7 +152,8 @@ func (c *compressionMockup) GetDecompressed(u uint64) (string, error) {
 	if decompressed, ok := c.i2s[u]; ok {
 		return decompressed, nil
 	}
-	return "", fmt.Errorf("compressed value %d not found", u)
+	panic(fmt.Sprintf("compressed value %d not found", u))
+	// return "", fmt.Errorf("compressed value %d not found", u)
 }
 
 func (c *compressionMockup) IsCompressionEnabled() bool {
@@ -163,10 +164,7 @@ func generateItems(n int, compressionManager sstable.ICompressionManager) ([]sst
 	data := getData(n, compressionManager)
 
 	sort.Slice(data, func(i, j int) bool {
-		if !compressionManager.IsCompressionEnabled() {
-			return data[i].GetKey() < data[j].GetKey()
-		}
-		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
+		return data[i].GetKey() < data[j].GetKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
@@ -190,10 +188,7 @@ func testCreate(t *testing.T, compression bool, mode string) {
 	data := getData(150, compressionManager)
 
 	sort.Slice(data, func(i, j int) bool {
-		if !compressionManager.IsCompressionEnabled() {
-			return data[i].GetKey() < data[j].GetKey()
-		}
-		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
+		return data[i].GetKey() < data[j].GetKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
@@ -388,10 +383,7 @@ func createMergeTest(t *testing.T, compressMerged bool, mergedMode string) {
 	readers := make([]*sstable.SSTableReader, len(slices))
 	for i, slice := range slices {
 		sort.Slice(slice, func(i, j int) bool {
-			if !compressionManager.IsCompressionEnabled() {
-				return slice[i].GetKey() < slice[j].GetKey()
-			}
-			return slice[i].GetCompressedKey() < slice[j].GetCompressedKey()
+			return slice[i].GetKey() < slice[j].GetKey()
 		})
 		tableName := fmt.Sprintf("test-table-merge-%d", i)
 		reader, err := sstableManger.CreateSSTable(tableName, sstable.NewSSListIterator(slice, compressionManager), uint64(len(slice)))
@@ -480,6 +472,62 @@ func testSSTableReaderValidate(t *testing.T, mode string) {
 	reader.Delete() // Clean up the SSTable after test
 }
 
+func testGetMany(t *testing.T, compression bool, mode string) {
+	itemsCount := 200
+	testDir := setupTestDir(t)
+	defer cleanupTestDir(t, testDir)
+
+	compressionManager := NewCompressionMockup(compression)
+	sstableManager := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
+
+	items, keys := generateItems(itemsCount, compressionManager)
+	iterator := sstable.NewSSListIterator(items, compressionManager)
+
+	_, err := sstableManager.CreateSSTable("test-table-getmany", iterator, uint64(len(items)))
+	if err != nil {
+		t.Fatalf("failed to create SSTable: %v", err)
+	}
+
+	reader := sstableManager.NewSSTableReader("test-table-getmany")
+	if reader == nil {
+		t.Fatal("failed to create SSTable reader")
+	}
+
+	// Pick 50 random keys from the table and 50 random keys not in the table
+	existingKeys := make([]string, 50)
+	copy(existingKeys, keys[:50])
+	nonExistingKeys := make([]string, 50)
+	for i := 0; i < 50; i++ {
+		nonExistingKeys[i] = randomString(10)
+	}
+
+	allKeys := append(existingKeys, nonExistingKeys...)
+
+	sort.Slice(allKeys, func(i, j int) bool {
+		return allKeys[i] < allKeys[j]
+	})
+
+	results, err := reader.GetMany(allKeys)
+	if err != nil {
+		t.Fatalf("failed to get many keys: %v", err)
+	}
+
+	if len(results) != len(allKeys) {
+		t.Fatalf("expected %d results, got %d", len(allKeys), len(results))
+	}
+
+	for i, key := range allKeys {
+		item := results[i]
+		isExisting := slices.Contains(keys, key)
+		if isExisting && item == nil {
+			t.Fatalf("expected key %s to be found, but got nil", key)
+		}
+		if !isExisting && item != nil {
+			t.Fatalf("expected key %s to not be found, but got a result", key)
+		}
+	}
+}
+
 // CREATE TABLE TESTS
 
 func TestCreateSSTableWithCompressionOneFile(t *testing.T) {
@@ -493,6 +541,23 @@ func TestCreateSSTableWithoutCompression(t *testing.T) {
 }
 func TestCreateSSTableWithoutCompressionMultipleFiles(t *testing.T) {
 	testCreate(t, false, sstable.MODE_MULTI_FILE)
+}
+
+// GET MANY TESTS
+func TestGetManyWithCompressionOneFile(t *testing.T) {
+	testGetMany(t, true, sstable.MODE_ONE_FILE)
+}
+
+func TestGetManyWithCompressionMultiFile(t *testing.T) {
+	testGetMany(t, true, sstable.MODE_MULTI_FILE)
+}
+
+func TestGetManyWithoutCompressionOneFile(t *testing.T) {
+	testGetMany(t, false, sstable.MODE_ONE_FILE)
+}
+
+func TestGetManyWithoutCompressionMultiFile(t *testing.T) {
+	testGetMany(t, false, sstable.MODE_MULTI_FILE)
 }
 
 // ITERATOR TESTS
