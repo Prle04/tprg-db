@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"sort"
 	"tprgdb/components/blockmanager"
 )
 
@@ -96,79 +95,6 @@ func (it *SSIterator) Next() (ISSTableItem, error) {
 	}
 	it.numberOfReadItems++
 	return item, nil
-}
-
-// Iterator for iterating over the sstable whose compression is different from the currently configured compression
-type SSIndexIterator struct {
-	index              *SSTableIndex
-	reader             *SSTableReader
-	compressionManager ICompressionManager
-	currentIndex       uint64
-}
-
-func NewSSIndexIterator(reader *SSTableReader, compressionManager ICompressionManager) *SSIndexIterator {
-	index, err := reader.GetIndex()
-	if err != nil {
-		return nil // Handle error appropriately
-	}
-	if compressionManager.IsCompressionEnabled() {
-		sort.Slice(*index, func(i, j int) bool {
-			return (*index)[i].CompressedKey < (*index)[j].CompressedKey
-		})
-	} else {
-		sort.Slice(*index, func(i, j int) bool {
-			return (*index)[i].Key < (*index)[j].Key
-		})
-	}
-	return &SSIndexIterator{
-		index:              index,
-		reader:             reader,
-		compressionManager: compressionManager,
-		currentIndex:       0,
-	}
-}
-
-func (it *SSIndexIterator) Next() (ISSTableItem, error) {
-	if it.currentIndex >= uint64(len(*it.index)) {
-		return nil, blockmanager.EOF // No more items to read
-	}
-	item := (*it.index)[it.currentIndex]
-	it.currentIndex++
-	file := it.reader.getDataFile()
-	if file == nil {
-		return nil, blockmanager.EOF // Data file is not open
-	}
-	file.Seek(file.Tell() + item.Offset)
-	record := &sstablerecord{
-		isCompressed: it.reader.IsCompressed(),
-	}
-	err := record.read(file)
-	if err != nil {
-		return nil, err
-	}
-	sstableItem := &SSItem{
-		Key:           item.Key,
-		CompressedKey: item.CompressedKey,
-		Value:         record.value,
-		Tombstone:     record.tombstone,
-		Timestamp:     record.timestamp,
-	}
-	
-	if it.reader.IsCompressed() {
-		decompressedKey, err := it.compressionManager.GetDecompressed(sstableItem.CompressedKey)
-		if err != nil {
-			return nil, err
-		}
-		sstableItem.Key = decompressedKey
-	} else {
-		compressedKey, err := it.compressionManager.GetCompressed(sstableItem.Key)
-		if err != nil {
-			return nil, err
-		}
-		sstableItem.CompressedKey = compressedKey
-	}
-
-	return sstableItem, nil
 }
 
 type SSListIterator struct {

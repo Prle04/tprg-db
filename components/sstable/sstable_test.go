@@ -152,6 +152,7 @@ func (c *compressionMockup) GetDecompressed(u uint64) (string, error) {
 	if decompressed, ok := c.i2s[u]; ok {
 		return decompressed, nil
 	}
+	panic(fmt.Sprintf("compressed value %d not found", u))
 	return "", fmt.Errorf("compressed value %d not found", u)
 }
 
@@ -163,10 +164,7 @@ func generateItems(n int, compressionManager sstable.ICompressionManager) ([]sst
 	data := getData(n, compressionManager)
 
 	sort.Slice(data, func(i, j int) bool {
-		if !compressionManager.IsCompressionEnabled() {
-			return data[i].GetKey() < data[j].GetKey()
-		}
-		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
+		return data[i].GetKey() < data[j].GetKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
@@ -190,10 +188,7 @@ func testCreate(t *testing.T, compression bool, mode string) {
 	data := getData(150, compressionManager)
 
 	sort.Slice(data, func(i, j int) bool {
-		if !compressionManager.IsCompressionEnabled() {
-			return data[i].GetKey() < data[j].GetKey()
-		}
-		return data[i].GetCompressedKey() < data[j].GetCompressedKey()
+		return data[i].GetKey() < data[j].GetKey()
 	})
 
 	// Convert []*testItem to []sstable.SSTableItem
@@ -388,10 +383,7 @@ func createMergeTest(t *testing.T, compressMerged bool, mergedMode string) {
 	readers := make([]*sstable.SSTableReader, len(slices))
 	for i, slice := range slices {
 		sort.Slice(slice, func(i, j int) bool {
-			if !compressionManager.IsCompressionEnabled() {
-				return slice[i].GetKey() < slice[j].GetKey()
-			}
-			return slice[i].GetCompressedKey() < slice[j].GetCompressedKey()
+			return slice[i].GetKey() < slice[j].GetKey()
 		})
 		tableName := fmt.Sprintf("test-table-merge-%d", i)
 		reader, err := sstableManger.CreateSSTable(tableName, sstable.NewSSListIterator(slice, compressionManager), uint64(len(slice)))

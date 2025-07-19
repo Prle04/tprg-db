@@ -17,22 +17,12 @@ type mergeItemHeap struct {
 
 func (h mergeItemHeap) Len() int { return len(h.items) }
 func (h mergeItemHeap) Less(i, j int) bool {
-	if h.isCompressionEnabled {
-		// For compressed items, compare by key and then by timestamp
-		if h.items[i].Item.GetCompressedKey() < h.items[j].Item.GetCompressedKey() {
-			return true
-		}
-		if h.items[i].Item.GetCompressedKey() > h.items[j].Item.GetCompressedKey() {
-			return false
-		}
-	} else {
-		// For uncompressed items, compare by key only
-		if h.items[i].Item.GetKey() < h.items[j].Item.GetKey() {
-			return true
-		}
-		if h.items[i].Item.GetKey() > h.items[j].Item.GetKey() {
-			return false
-		}
+
+	if h.items[i].Item.GetKey() < h.items[j].Item.GetKey() {
+		return true
+	}
+	if h.items[i].Item.GetKey() > h.items[j].Item.GetKey() {
+		return false
 	}
 	return h.items[i].Item.GetTimestamp() > h.items[j].Item.GetTimestamp() // If keys are equal, compare by timestamp
 }
@@ -51,9 +41,9 @@ func (h *mergeItemHeap) Pop() interface{} {
 
 type SSTableMergeIterator struct {
 	// readers       []*SSTableReader
-	iterators            []ISSTableIterator
-	lastItem             ISSTableItem
-	priorityQueue        *mergeItemHeap
+	iterators     []ISSTableIterator
+	lastItem      ISSTableItem
+	priorityQueue *mergeItemHeap
 }
 
 func NewSSTableMergeIterator(readers []*SSTableReader, isCompressionEnabled bool) (ISSTableIterator, error) {
@@ -89,9 +79,9 @@ func NewSSTableMergeIterator(readers []*SSTableReader, isCompressionEnabled bool
 
 	return &SSTableMergeIterator{
 		// readers:       readers,
-		lastItem:             nil,
-		iterators:            iterators,
-		priorityQueue:        priorityQueue,
+		lastItem:      nil,
+		iterators:     iterators,
+		priorityQueue: priorityQueue,
 	}, nil
 }
 
