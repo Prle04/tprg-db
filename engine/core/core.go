@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"time"
+	"tprgdb/components/avltree"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/compression"
 	"tprgdb/components/lrucache"
@@ -19,7 +20,7 @@ type Core struct {
 	lsm                *lsm.LSM
 	compressionManager *compression.CompressionManager
 	// Insert once the AVL tree is implemented
-	// avl                *avltree.AVLTree
+	avl            *avltree.AVLTree
 	sstableManager *sstable.SSTableManager
 	memtable       *memtable.Memtable
 	cache          *lrucache.LRUCache[*Item]
@@ -36,6 +37,8 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 	if err != nil {
 		return nil, err
 	}
+	avl := avltree.CreateAVLTree()
+	// TODO: Use avl as compression structure once serialization is implemented
 	compressionStruct := compression.NewHashMapCompression()
 	decompressionStruct := compression.NewHashMapDecompression()
 	compressionManager := compression.NewCompressionManager(compressionStruct, decompressionStruct, config.Compression.Enabled)
@@ -86,6 +89,7 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 		sstableManager:     sstableManager,
 		memtable:           memtable,
 		cache:              cache,
+		avl:                avl,
 	}, nil
 }
 
@@ -127,6 +131,10 @@ func (c *Core) Get(key string) (*Item, error) {
 func (c *Core) Set(key string, value []byte) error {
 
 	compressedKey := c.compressionManager.Add(key)
+
+	// FOR NOW MANUALLY ADD THE KEY TO THE AVL TREE
+	c.avl.Insert(key, int(compressedKey))
+
 	if err := c.wal.Add(key, value); err != nil {
 		return err
 	}
@@ -161,13 +169,83 @@ func (c *Core) Delete(key string) error {
 	return nil
 }
 
+func (c *Core) GetMany(keys []string) ([]*Item, error) {
+	items := make([]*Item, len(keys))
+	nextKeys := make([]string, 0, len(keys))
+	indexes := make(map[string]int, len(keys))
+	for i, key := range keys {
+		indexes[key] = i
+		memtableItem := c.memtable.Get(key)
+		if memtableItem != nil {
+			items[i] = &Item{
+				key:       memtableItem.GetKey(),
+				value:     memtableItem.GetValue(),
+				timestamp: memtableItem.GetTimestamp(),
+				tombstone: memtableItem.IsDeleted(),
+			}
+		} else {
+			cacheItem, found := c.cache.GetElement(key)
+			if found {
+				items[i] = &Item{
+					key:       cacheItem.GetKey(),
+					value:     cacheItem.GetValue(),
+					timestamp: cacheItem.GetTimestamp(),
+					tombstone: cacheItem.IsDeleted(),
+				}
+			} else {
+				nextKeys = append(nextKeys, key)
+			}
+		}
+	}
+	if len(nextKeys) == 0 {
+		return items, nil
+	}
+	sstableItems, err := c.lsm.GetMany(nextKeys)
+	if err != nil {
+		return nil, err
+	}
+	for _, sstableItem := range sstableItems {
+		if sstableItem == nil {
+			continue
+		}
+		index, exists := indexes[sstableItem.GetKey()]
+		if !exists {
+			continue
+		}
+		item := &Item{
+			key:       sstableItem.GetKey(),
+			value:     sstableItem.GetValue(),
+			timestamp: sstableItem.GetTimestamp(),
+			tombstone: sstableItem.IsDeleted(),
+		}
+		items[index] = item
+		c.cache.AddElement(item.GetKey(), item)
+	}
+	return items, nil
+}
+
+func (c *Core) GetKeysRange(start, end string, pageNumber int, itemsPerPage int) ([]string, error) {
+	data := c.avl.RangeScan(start, end, pageNumber, itemsPerPage)
+	if data == nil {
+		return nil, nil
+	}
+	keys := make([]string, len(data))
+	for i, item := range data {
+		if item == nil {
+			continue
+		}
+		keys[i] = item.GetKey()
+	}
+	return keys, nil
+}
+
 func (c *Core) updateCache(key string, value []byte, timestamp uint64, tombstone bool) {
 	if c.cache.Exists(key) {
 		item := &Item{
 			key:       key,
-			value:     nil,
-			timestamp: uint64(time.Now().Unix()),
-			tombstone: true,
+			value:     value,
+			timestamp: timestamp,
+			tombstone: tombstone,
 		}
 		if added, _ := c.cache.AddElement(key, item); !added {
 			// If item was not updated in the cache, it means we have a stale
@@ -217,4 +295,17 @@ func (i Item) GetTimestamp() uint64 {
 }
 func (i Item) IsDeleted() bool {
 	return i.tombstone
+}
+
+func Shutdown(c *Core) error {
+	if err := c.wal.Close(); err != nil {
+		return fmt.Errorf("error closing WAL: %w", err)
+	}
+	if err := c.blockManager.Close(); err != nil {
+		return fmt.Errorf("error closing BlockManager: %w", err)
+	}
+	if err := c.lsm.Save(); err != nil {
+		return fmt.Errorf("error closing LSM: %w", err)
+	}
+	return nil
 }

@@ -199,3 +199,13 @@ func getBlockFilename(path string) string {
 	split := strings.Split(path, "+")
 	return strings.Join(split[:len(split)-1], "+")
 }
+
+func (m *BlockManager) Close() error {
+	var resErr error = nil
+	for _, block, ok := m.cache.GetIterator().Next(); ok; _, block, ok = m.cache.GetIterator().Next() {
+		if err := m.syncBlock(block.GetPath()); err != nil {
+			resErr = err
+		}
+	}
+	return resErr
+}
