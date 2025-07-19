@@ -74,11 +74,6 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 		ss.summary = nil // Reset the summary to avoid unnecessary reads
 	}(s)
 
-	compressedKey, err := s.compressionManager.GetCompressed(key)
-	if err != nil {
-		return nil, err
-	}
-
 	filter, err := s.getBloomFilter()
 	if err != nil {
 		return nil, err
@@ -101,10 +96,7 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	current := summary.index[0]
 
 	for _, item := range summary.index {
-		if !header.IsCompressionEnabled && key >= item.Key {
-			break
-		}
-		if header.IsCompressionEnabled && compressedKey >= item.CompressedKey {
+		if key >= item.Key {
 			break
 		}
 		current = item
@@ -133,20 +125,19 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 			}
 			return nil, err
 		}
-		if header.IsCompressionEnabled {
-			if item.CompressedKey == compressedKey {
-				break // Found the item with the compressed key
+		if s.IsCompressed() {
+			// Decompress the key if compression is enabled
+			decompressedKey, err := s.compressionManager.GetDecompressed(item.CompressedKey)
+			if err != nil {
+				return nil, err
 			}
-			if item.CompressedKey > compressedKey {
-				return nil, nil // Key not found in the index
-			}
-		} else {
-			if item.Key == key {
-				break // Found the item with the key
-			}
-			if item.Key > key {
-				return nil, nil // Key not found in the index
-			}
+			item.Key = decompressedKey
+		}
+		if item.Key == key {
+			break // Found the item with the key
+		}
+		if item.Key > key {
+			return nil, nil // Key not found in the index
 		}
 	}
 
@@ -167,6 +158,14 @@ func (s *SSTableReader) Get(key string) (*SSItem, error) {
 	result.Value = record.value
 	result.Tombstone = record.tombstone
 	result.Timestamp = record.timestamp
+	if s.IsCompressed() {
+		// Decompress the key if compression is enabled
+		decompressedKey, err := s.compressionManager.GetDecompressed(result.CompressedKey)
+		if err != nil {
+			return nil, err
+		}
+		result.Key = decompressedKey
+	}
 	return result, nil
 }
 
@@ -309,53 +308,44 @@ func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 		return nil, err
 	}
 
+	var summaryFile *blockmanager.BlockedFile
 	if s.mode == MODE_ONE_FILE {
-		dataFile := s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
-		dataFile.Seek(header.SummaryStartOffset)
-		s.summary.minKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-		err = s.summary.minKey.DeserializeFromFile(dataFile)
-		if err != nil {
-			return nil, err
-		}
-		s.summary.maxKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-		err = s.summary.maxKey.DeserializeFromFile(dataFile)
-		if err != nil {
-			return nil, err
-		}
-		for dataFile.Tell() < header.BloomFilterStartOffset {
-			item := &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-			err = item.DeserializeFromFile(dataFile)
-			if err != nil {
-				return nil, err
-			}
-			s.summary.index = append(s.summary.index, item)
-		}
-		dataFile.Close()
+		summaryFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
+		summaryFile.Seek(header.SummaryStartOffset)
 	} else {
-		summaryFile := s.blockManager.OpenBlockedFile(s.filePath + "-summary.db")
-		s.summary.minKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-		err = s.summary.minKey.DeserializeFromFile(summaryFile)
+		summaryFile = s.blockManager.OpenBlockedFile(s.filePath + "-summary.db")
+	}
+	s.summary.minKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+	err = s.summary.minKey.DeserializeFromFile(summaryFile)
+	if err != nil {
+		return nil, err
+	}
+	s.summary.maxKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+	err = s.summary.maxKey.DeserializeFromFile(summaryFile)
+	if err != nil {
+		return nil, err
+	}
+	for summaryFile.Tell() < header.BloomFilterStartOffset {
+		item := &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
+		err = item.DeserializeFromFile(summaryFile)
 		if err != nil {
+			if err == blockmanager.EOF {
+				break
+			}
 			return nil, err
 		}
-		s.summary.maxKey = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-		err = s.summary.maxKey.DeserializeFromFile(summaryFile)
-		if err != nil {
-			return nil, err
-		}
-		for range header.NumberOfItems {
-			item := &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-			err = item.DeserializeFromFile(summaryFile)
+		if header.IsCompressionEnabled {
+			// Decompress the key if compression is enabled
+			decompressedKey, err := s.compressionManager.GetDecompressed(item.CompressedKey)
 			if err != nil {
-				if err == blockmanager.EOF {
-					break
-				}
 				return nil, err
 			}
-			s.summary.index = append(s.summary.index, item)
+			item.Key = decompressedKey
 		}
-		summaryFile.Close()
+		s.summary.index = append(s.summary.index, item)
 	}
+	summaryFile.Close()
+
 	if header.IsCompressionEnabled {
 		// Decompress Min and Max keys if compression is enabled
 		minKey, err := s.compressionManager.GetDecompressed(s.summary.minKey.CompressedKey)
@@ -372,42 +362,8 @@ func (s *SSTableReader) loadSummary() (*SSTableSummary, error) {
 	return s.summary, nil
 }
 
-func (s *SSTableReader) GetIndex() (*SSTableIndex, error) {
-	header, err := s.getHeader()
-	if err != nil {
-		return nil, err
-	}
-	var indexFile *blockmanager.BlockedFile
-	if s.mode == MODE_ONE_FILE {
-		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-data.db")
-		indexFile.Seek(header.IndexStartOffset) // Seek to the index offset in the data file
-	} else {
-		indexFile = s.blockManager.OpenBlockedFile(s.filePath + "-index.db")
-	}
-	index := make(SSTableIndex, header.NumberOfItems)
-	for i := 0; i < int(header.NumberOfItems); i++ {
-		item := &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
-		err = item.DeserializeFromFile(indexFile)
-		if err != nil {
-			if err == blockmanager.EOF {
-				break // End of index file
-			}
-			return nil, err
-		}
-		index[i] = item
-	}
-	return &index, nil
-}
-
 func (s *SSTableReader) GetIterator() ISSTableIterator {
-	// If the compression state is the same as the compression manager's state, we can use
-	// the iterator that does't change item order.
-	if s.IsCompressed() == s.compressionManager.IsCompressionEnabled() {
-		return NewSSIterator(s, s.compressionManager)
-	} else {
-		// Otherwise, we need to use the iterator that orders items by new compression state.
-		return NewSSIterator(s, s.compressionManager)
-	}
+	return NewSSIterator(s, s.compressionManager)
 }
 
 func (s *SSTableReader) GetTableName() string {

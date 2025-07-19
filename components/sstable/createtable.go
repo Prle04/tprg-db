@@ -47,8 +47,6 @@ func flushToSSTable(
 	// We write the SSTable header at the beginning of the file
 	dataFile.Seek(SSTableHeaderSize)
 
-	var minKey, maxKey *SSTableIndexItem = nil, nil
-
 	header := &SSTableHeader{
 		IndexStartOffset:       0,
 		SummaryStartOffset:     0,
@@ -81,13 +79,6 @@ func flushToSSTable(
 			CompressedKey:        compressedKey,
 			Offset:               currentOffset,
 			IsCompressionEnabled: compressionManager.IsCompressionEnabled(),
-		}
-
-		if minKey == nil || item.GetKey() < minKey.Key {
-			minKey = index[header.NumberOfItems]
-		}
-		if maxKey == nil || item.GetKey() > maxKey.Key {
-			maxKey = index[header.NumberOfItems]
 		}
 
 		header.NumberOfItems++
@@ -132,6 +123,10 @@ func flushToSSTable(
 	}
 
 	header.IndexStartOffset = dataFile.Tell()
+
+	minKey := index[0]                      // The first item in the index is the minimum key
+	maxKey := index[header.NumberOfItems-1] // The last item in the index is the maximum key
+
 	// Now that we have completed writting all items to data segments
 	// we can write other segments of the SSTable
 	// Depending on the mode, they will be written to different files
@@ -226,19 +221,6 @@ func flushToSSTable(
 	}
 	// The mode is "multi-file", we will write the index, bloom filter and Merkle tree to separate files
 
-	// First we write the empty header to the data file
-	dataFile.Seek(0)
-	headerData := header.SerializeToBytes()
-	err := dataFile.Write(headerData)
-	if err != nil {
-		return nil, err
-	}
-	// Close the data file
-	err = dataFile.Close()
-	if err != nil {
-		return nil, err
-	}
-
 	indexFile := manager.OpenBlockedFile(path + "-index.db")
 	summaryFile := manager.OpenBlockedFile(path + "-summary.db")
 	bloomFile := manager.OpenBlockedFile(path + "-filter.db")
@@ -248,7 +230,7 @@ func flushToSSTable(
 
 	// First we write the first and last item of the index into the summary
 	// so we have range of the whole table
-	err = summaryFile.Write(minKey.getData()) // Write the first item of the index as a summary
+	err := summaryFile.Write(minKey.getData()) // Write the first item of the index as a summary
 	if err != nil {
 		return nil, err
 	}
@@ -281,11 +263,19 @@ func flushToSSTable(
 		// Update the current offset for the index
 		currentOffset += uint64(len(data))
 	}
+	// Write the filter start offset to the header
+	// THIS IS NEEDED WHEN READING THE SUMMARY FILE TO KNOW WHEN TO STOP READING
+	header.BloomFilterStartOffset = summaryFile.Tell()
+
 	// Write the bloom filter to the file
 	err = bloomfilter.SerializeToFile(bloomFile)
 	if err != nil {
 		return nil, err
 	}
+
+	// Write the merkle start offset to the header
+	header.MerkleStartOffset = bloomFile.Tell()
+
 	// Write the Merkle tree to the file
 	merkleTree := merkleBuilder.Build()
 	err = merkleTree.SerializeToFile(merkleFile)
@@ -293,7 +283,18 @@ func flushToSSTable(
 		return nil, err
 	}
 
+	dataFile.Seek(0)
+	headerData := header.SerializeToBytes()
+	err = dataFile.Write(headerData)
+	if err != nil {
+		return nil, err
+	}
+
 	// Close all files
+	err = dataFile.Close()
+	if err != nil {
+		return nil, err
+	}
 	err = indexFile.Close()
 	if err != nil {
 		return nil, err
