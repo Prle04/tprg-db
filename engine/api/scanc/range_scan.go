@@ -58,7 +58,7 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*engine.FinalItem, error) {
 			if item != nil && !item.IsDeleted() {
 				timestamp := time.Unix(int64(item.GetTimestamp()), 0)
 				c.currentItems = append(c.currentItems, &engine.FinalItem{
-					Key:       item.GetKey(),
+					Key:       item.GetKey()[PREFIX_SIZE:], // Remove the prefix
 					Value:     item.GetValue(),
 					Timestamp: &timestamp,
 				})
@@ -108,7 +108,7 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*engine.FinalItem, error) {
 				}
 				timestamp := time.Unix(int64(item.GetTimestamp()), 0)
 				c.currentItems = append(c.currentItems, &engine.FinalItem{
-					Key:       item.GetKey(),
+					Key:       item.GetKey()[PREFIX_SIZE:], // Remove the prefix
 					Value:     item.GetValue(),
 					Timestamp: &timestamp,
 				})
