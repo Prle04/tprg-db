@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"path"
 	"time"
 	"tprgdb/components/avltree"
 	"tprgdb/components/blockmanager"
@@ -14,7 +15,12 @@ import (
 	externalconfiguration "tprgdb/engine/externalConfiguration"
 )
 
+const (
+	COMPRESSION_FILENAME = "compression.bin"
+)
+
 type Core struct {
+	dbName             string
 	wal                *walPackage.WriteAheadLog
 	blockManager       *blockmanager.BlockManager
 	lsm                *lsm.LSM
@@ -26,7 +32,7 @@ type Core struct {
 	cache          *lrucache.LRUCache[*Item]
 }
 
-func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error) {
+func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string) (*Core, error) {
 
 	blockSize := uint64(config.BlockManager.BlockSizeBytes)
 
@@ -82,6 +88,7 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 	}
 
 	return &Core{
+		dbName:             dbName,
 		wal:                wal,
 		blockManager:       blockManager,
 		lsm:                lsm,
@@ -275,6 +282,9 @@ func (c *Core) flush(compressedKey uint64) error {
 		}
 		c.wal.DeleteUntil(lastSegment)
 	}
+	compressionPath := path.Join("dbs", c.dbName, "compression", COMPRESSION_FILENAME)
+	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
+	c.compressionManager.SerializeToFile(compressionFile)
 	return nil
 }
 
@@ -298,7 +308,7 @@ func (i Item) IsDeleted() bool {
 	return i.tombstone
 }
 
-func Shutdown(c *Core) error {
+func (c *Core) Shutdown() error {
 	if err := c.wal.Close(); err != nil {
 		return fmt.Errorf("error closing WAL: %w", err)
 	}

@@ -1,5 +1,7 @@
 package externalconfiguration
 
+import "path"
+
 type LSMConfig struct {
 	MaxLevels  int            `json:"maxLevels"`
 	FolderPath string         `json:"folderPath"`
@@ -7,7 +9,6 @@ type LSMConfig struct {
 	SizeTier   SizeTierConfig `json:"sizeTierConfig"`
 	Leved      LevedConfig    `json:"leveledConfig"`
 }
-
 
 type SizeTierConfig struct {
 	FilesPerLevel int `json:"filesPerLevel"`
@@ -18,13 +19,13 @@ type LevedConfig struct {
 	LevelMultiplier  int `json:"levelMultiplier"`
 }
 
-func (l *LSMConfig) Validate() {
+func (l *LSMConfig) Validate(dbName string) {
 	if l.MaxLevels <= 0 {
 		l.MaxLevels = 5 // Default value
 	}
 
 	if l.FolderPath == "" {
-		l.FolderPath = "data/lsm" // Default folder path
+		l.FolderPath = path.Join("dbs", dbName, "data", "lsm") // Default folder path
 	}
 
 	validAlgorithms := map[string]bool{
@@ -36,13 +37,13 @@ func (l *LSMConfig) Validate() {
 	}
 }
 
-func (s *SizeTierConfig) Validate() {
+func (s *SizeTierConfig) Validate(dbName string) {
 	if s.FilesPerLevel <= 0 {
 		s.FilesPerLevel = 10 // Default value
 	}
 }
 
-func (l *LevedConfig) Validate() {
+func (l *LevedConfig) Validate(dbName string) {
 	if l.InitialLevelSize <= 0 {
 		l.InitialLevelSize = 5 // Default value
 	}

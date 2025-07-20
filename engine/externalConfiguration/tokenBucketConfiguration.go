@@ -5,7 +5,7 @@ type TokenBucketConfiguration struct {
 	TokenCount      int64 `json:"tokenCount"`      // maximum tokens in the bucket
 }
 
-func (tbc *TokenBucketConfiguration) Validate() {
+func (tbc *TokenBucketConfiguration) Validate(dbName string) {
 	if tbc.RefreshDuration <= 0 {
 		tbc.RefreshDuration = 60 * 15 // Default to 15 minutes if not set
 	}

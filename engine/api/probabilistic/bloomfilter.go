@@ -3,10 +3,9 @@ package probabilistic
 import (
 	"errors"
 	"tprgdb/components/bloomfilter"
+	"tprgdb/engine/constants"
 	"tprgdb/engine/core"
 )
-
-const PREFIX_BLOOMFILTER = "F"
 
 type BloomFilterAPI struct {
 	core *core.Core
@@ -27,14 +26,14 @@ func (api *BloomFilterAPI) Create(name string, size int, errorRate float64) erro
 	}
 	filter := bloomfilter.NewBloomFilter(size, errorRate)
 	bytes := filter.SerializeToBytes()
-	return api.core.Set(PREFIX_BLOOMFILTER+name, bytes)
+	return api.core.Set(constants.PREFIX_BLOOMFILTER+name, bytes)
 }
 
 func (api *BloomFilterAPI) Delete(name string) error {
 	if name == "" {
 		return errors.New("filter name cannot be empty")
 	}
-	return api.core.Delete(PREFIX_BLOOMFILTER + name)
+	return api.core.Delete(constants.PREFIX_BLOOMFILTER + name)
 }
 
 func (api *BloomFilterAPI) Insert(name string, data []byte) error {
@@ -45,7 +44,7 @@ func (api *BloomFilterAPI) Insert(name string, data []byte) error {
 		return errors.New("data to insert cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_BLOOMFILTER + name)
+	item, err := api.core.Get(constants.PREFIX_BLOOMFILTER + name)
 	if err != nil {
 		return err
 	}
@@ -58,7 +57,7 @@ func (api *BloomFilterAPI) Insert(name string, data []byte) error {
 	filter.DeserializeFromBytes(item.GetValue())
 
 	filter.Insert(data)
-	return api.core.Set(PREFIX_BLOOMFILTER+name, filter.SerializeToBytes())
+	return api.core.Set(constants.PREFIX_BLOOMFILTER+name, filter.SerializeToBytes())
 }
 
 func (api *BloomFilterAPI) IsNotIn(name string, data []byte) (bool, error) {
@@ -69,7 +68,7 @@ func (api *BloomFilterAPI) IsNotIn(name string, data []byte) (bool, error) {
 		return false, errors.New("data to check cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_BLOOMFILTER + name)
+	item, err := api.core.Get(constants.PREFIX_BLOOMFILTER + name)
 	if err != nil {
 		return false, err
 	}

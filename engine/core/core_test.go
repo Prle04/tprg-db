@@ -5,14 +5,16 @@ import (
 	externalconfiguration "tprgdb/engine/externalConfiguration"
 )
 
-func defaultConfig() *externalconfiguration.ExternalConfiguration {
+const DB_NAME = "testdb"
+
+func defaultConfig(dbName string) *externalconfiguration.ExternalConfiguration {
 	config := new(externalconfiguration.ExternalConfiguration)
-	config.Validate()
+	config.Validate(dbName)
 	return config
 }
 
 func TestCoreSetAndGet(t *testing.T) {
-	core, err := NewCore(defaultConfig())
+	core, err := NewCore(defaultConfig(DB_NAME), DB_NAME)
 	if err != nil {
 		t.Fatalf("Failed to create core: %v", err)
 	}
@@ -34,7 +36,7 @@ func TestCoreSetAndGet(t *testing.T) {
 }
 
 func TestCoreDelete(t *testing.T) {
-	core, err := NewCore(defaultConfig())
+	core, err := NewCore(defaultConfig(DB_NAME), DB_NAME)
 	if err != nil {
 		t.Fatalf("Failed to create core: %v", err)
 	}
@@ -60,7 +62,7 @@ func TestCoreDelete(t *testing.T) {
 }
 
 func TestCoreGetMany(t *testing.T) {
-	core, err := NewCore(defaultConfig())
+	core, err := NewCore(defaultConfig(DB_NAME), DB_NAME)
 	if err != nil {
 		t.Fatalf("Failed to create core: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestCoreGetMany(t *testing.T) {
 }
 
 func TestCoreGetKeysRange(t *testing.T) {
-	core, err := NewCore(defaultConfig())
+	core, err := NewCore(defaultConfig(DB_NAME), DB_NAME)
 	if err != nil {
 		t.Fatalf("Failed to create core: %v", err)
 	}

@@ -15,7 +15,7 @@ const (
 	BTREE    = "b-tree"
 )
 
-func (m *MemtableConfig) Validate() {
+func (m *MemtableConfig) Validate(dbName string) {
 	validDataStructures := map[string]bool{
 		SKIPLIST: true,
 		HASHMAP:  true,
@@ -32,29 +32,26 @@ func (m *MemtableConfig) Validate() {
 		m.Threshld = 1024 // Default threshold
 	}
 
-	m.SkipList.Validate()
-	m.BTree.Validate()
+	m.SkipList.Validate(dbName)
+	m.BTree.Validate(dbName)
 
 }
-
-
 
 type SkipListConfig struct {
 	MaxHeight int `json:"maxHeight"`
 }
 
-func (s *SkipListConfig) Validate() {
+func (s *SkipListConfig) Validate(dbName string) {
 	if s.MaxHeight <= 0 {
 		s.MaxHeight = 16 // Default value
 	}
 }
 
-
 type BTreeConfig struct {
 	MaxChildren int `json:"maxChildren"`
 }
 
-func (s *BTreeConfig) Validate() {
+func (s *BTreeConfig) Validate(dbName string) {
 	if s.MaxChildren <= 0 {
 		s.MaxChildren = 16 // Default value
 	}

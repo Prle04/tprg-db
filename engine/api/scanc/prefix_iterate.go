@@ -1,8 +1,8 @@
 package scanc
 
 import (
-	"tprgdb/engine"
 	"tprgdb/engine/core"
+	"tprgdb/engine/item"
 )
 
 type PrefixIterator struct {
@@ -15,7 +15,7 @@ func NewPrefixIterator(core *core.Core, prefix string) *PrefixIterator {
 	}
 }
 
-func (it *PrefixIterator) Next() (*engine.FinalItem, error) {
+func (it *PrefixIterator) Next() (*item.DBItem, error) {
 	return it.rangeIterator.Next()
 }
 

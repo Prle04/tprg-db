@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"tprgdb/components/serialization"
 	"tprgdb/components/simhash"
+	"tprgdb/engine/constants"
 	"tprgdb/engine/core"
 )
-
-const SIMHASH_PREFIX = "S"
 
 type SimHashAPI struct {
 	core *core.Core
@@ -25,14 +24,14 @@ func (api *SimHashAPI) Create(name string, text string) error {
 	}
 	sh := simhash.SimHash(text)
 	bytes := serialization.UInt64ToBytes(sh)
-	return api.core.Set(SIMHASH_PREFIX+name, bytes)
+	return api.core.Set(constants.SH_PREFIX+name, bytes)
 }
 
 func (api *SimHashAPI) Delete(name string) error {
 	if name == "" {
 		return errors.New("fingerprint name cannot be empty")
 	}
-	return api.core.Delete(SIMHASH_PREFIX + name)
+	return api.core.Delete(constants.SH_PREFIX + name)
 }
 
 func (api *SimHashAPI) Get(name string) (uint64, error) {
@@ -40,7 +39,7 @@ func (api *SimHashAPI) Get(name string) (uint64, error) {
 		return 0, errors.New("fingerprint name cannot be empty")
 	}
 
-	item, err := api.core.Get(SIMHASH_PREFIX + name)
+	item, err := api.core.Get(constants.SH_PREFIX + name)
 	if err != nil {
 		return 0, err
 	}
@@ -56,7 +55,7 @@ func (api *SimHashAPI) Similarity(name1, name2 string) (int, error) {
 		return 0, errors.New("fingerprint names cannot be empty")
 	}
 
-	fingerprints, err := api.core.GetMany([]string{SIMHASH_PREFIX + name1, SIMHASH_PREFIX + name2})
+	fingerprints, err := api.core.GetMany([]string{constants.SH_PREFIX + name1, constants.SH_PREFIX + name2})
 	if err != nil {
 		return 0, err
 	}

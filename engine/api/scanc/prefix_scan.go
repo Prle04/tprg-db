@@ -1,8 +1,8 @@
 package scanc
 
 import (
-	"tprgdb/engine"
 	"tprgdb/engine/core"
+	"tprgdb/engine/item"
 )
 
 type PrefixScanCursor struct {
@@ -17,7 +17,7 @@ func NewPrefixScanCursor(core *core.Core, prefix string, pageSize int) *PrefixSc
 	}
 }
 
-func (c *PrefixScanCursor) GetPage(pageNumber int) ([]*engine.FinalItem, error) {
+func (c *PrefixScanCursor) GetPage(pageNumber int) ([]*item.DBItem, error) {
 	return c.rangeScanCursor.GetPage(pageNumber)
 }
 
@@ -28,9 +28,9 @@ func (c *PrefixScanCursor) GetPageSize() int {
 func (c *PrefixScanCursor) GetCurrentPage() int {
 	return c.rangeScanCursor.GetCurrentPage()
 }
-func (c *PrefixScanCursor) NextPage() ([]*engine.FinalItem, error) {
+func (c *PrefixScanCursor) NextPage() ([]*item.DBItem, error) {
 	return c.rangeScanCursor.NextPage()
 }
-func (c *PrefixScanCursor) PreviousPage() ([]*engine.FinalItem, error) {
+func (c *PrefixScanCursor) PreviousPage() ([]*item.DBItem, error) {
 	return c.rangeScanCursor.PreviousPage()
 }

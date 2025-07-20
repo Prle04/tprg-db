@@ -1,14 +1,16 @@
 package externalconfiguration
 
+import "path"
+
 type SSTableConfig struct {
 	FolderPath            string `json:"folderPath"`
 	SummaryDilutionFactor int    `json:"summaryDilutionFactor"`
 	Mode                  string `json:"mode"`
 }
 
-func (s *SSTableConfig) Validate() {
+func (s *SSTableConfig) Validate(dbName string) {
 	if s.FolderPath == "" {
-		s.FolderPath = "data/sstable" // Default folder path
+		s.FolderPath = path.Join("dbs", dbName, "data", "sstables") // Default folder path
 	}
 
 	if s.SummaryDilutionFactor <= 0 {

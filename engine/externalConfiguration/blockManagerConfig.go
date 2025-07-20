@@ -2,8 +2,8 @@ package externalconfiguration
 
 type BlockManagerConfig struct {
 	BlockSize      string `json:"blockSize"`
-	BlockSizeBytes int    
-	MaxElements    int    `json:"maxElements"`
+	BlockSizeBytes int
+	MaxElements    int `json:"maxElements"`
 }
 
 const (
@@ -12,7 +12,7 @@ const (
 	KB16 = "16KB"
 )
 
-func (b *BlockManagerConfig) Validate() {
+func (b *BlockManagerConfig) Validate(dbName string) {
 	validSizes := map[string]int{
 		KB4:  4096,
 		KB8:  8192,

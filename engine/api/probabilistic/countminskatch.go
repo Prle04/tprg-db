@@ -3,10 +3,9 @@ package probabilistic
 import (
 	"errors"
 	"tprgdb/components/countminsketch"
+	"tprgdb/engine/constants"
 	"tprgdb/engine/core"
 )
-
-const PREFIX_CMS = "C"
 
 type CountMinSketchAPI struct {
 	core *core.Core
@@ -25,14 +24,14 @@ func (api *CountMinSketchAPI) Create(name string, k, m int) error {
 
 	cms := countminsketch.New(uint32(k), uint32(m))
 	bytes := cms.SerializeToBytes()
-	return api.core.Set(PREFIX_CMS+name, bytes)
+	return api.core.Set(constants.CMS_PREFIX+name, bytes)
 }
 
 func (api *CountMinSketchAPI) Delete(name string) error {
 	if name == "" {
 		return errors.New("cms name cannot be empty")
 	}
-	return api.core.Delete(PREFIX_CMS + name)
+	return api.core.Delete(constants.CMS_PREFIX + name)
 }
 
 func (api *CountMinSketchAPI) Insert(name string, data []byte) error {
@@ -43,7 +42,7 @@ func (api *CountMinSketchAPI) Insert(name string, data []byte) error {
 		return errors.New("data to insert cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_CMS + name)
+	item, err := api.core.Get(constants.CMS_PREFIX + name)
 	if err != nil {
 		return err
 	}
@@ -56,7 +55,7 @@ func (api *CountMinSketchAPI) Insert(name string, data []byte) error {
 	cms.DeserializeFromBytes(item.GetValue())
 
 	cms.Store(data)
-	return api.core.Set(PREFIX_CMS+name, cms.SerializeToBytes())
+	return api.core.Set(constants.CMS_PREFIX+name, cms.SerializeToBytes())
 }
 
 func (api *CountMinSketchAPI) Count(name string, data []byte) (uint64, error) {
@@ -67,7 +66,7 @@ func (api *CountMinSketchAPI) Count(name string, data []byte) (uint64, error) {
 		return 0, errors.New("data to count cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_CMS + name)
+	item, err := api.core.Get(constants.CMS_PREFIX + name)
 	if err != nil {
 		return 0, err
 	}

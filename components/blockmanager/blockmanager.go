@@ -202,7 +202,8 @@ func getBlockFilename(path string) string {
 
 func (m *BlockManager) Close() error {
 	var resErr error = nil
-	for _, block, ok := m.cache.GetIterator().Next(); ok; _, block, ok = m.cache.GetIterator().Next() {
+	iter := m.cache.GetIterator()
+	for _, block, ok := iter.Next(); ok; _, block, ok = iter.Next() {
 		if err := m.syncBlock(block.GetPath()); err != nil {
 			resErr = err
 		}
