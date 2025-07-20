@@ -5,8 +5,8 @@ type MemtableConfig struct {
 	NumberOfInstances int    `json:"numberOfInstances"`
 	Threshld          int    `json:"threshld"`
 
-	SkipList SkipListConfig `json:"skipListConfig"`
-	BTree    BTreeConfig    `json:"bTreeConfig"`
+	SkipList SkipListConfig `json:"skipList"`
+	BTree    BTreeConfig    `json:"bTree"`
 }
 
 const (
