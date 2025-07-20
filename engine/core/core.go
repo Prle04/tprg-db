@@ -39,7 +39,7 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 	}
 	avl := avltree.CreateAVLTree()
 	// TODO: Use avl as compression structure once serialization is implemented
-	compressionStruct := compression.NewHashMapCompression()
+	compressionStruct := compression.NewAVLCompression(avl)
 	decompressionStruct := compression.NewHashMapDecompression()
 	compressionManager := compression.NewCompressionManager(compressionStruct, decompressionStruct, config.Compression.Enabled)
 
@@ -131,9 +131,6 @@ func (c *Core) Get(key string) (*Item, error) {
 func (c *Core) Set(key string, value []byte) error {
 
 	compressedKey := c.compressionManager.Add(key)
-
-	// FOR NOW MANUALLY ADD THE KEY TO THE AVL TREE
-	c.avl.Insert(key, int(compressedKey))
 
 	if err := c.wal.Add(key, value); err != nil {
 		return err
