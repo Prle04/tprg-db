@@ -110,3 +110,15 @@ func BytesToFloat64(bytes []byte) float64 {
 func BytesToString(bytes []byte) string {
 	return string(bytes)
 }
+
+func UVarInt(value uint64) []byte {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, value)
+	return buf[:n]
+}
+
+func VarInt(value int64) []byte {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutVarint(buf, value)
+	return buf[:n]
+}
