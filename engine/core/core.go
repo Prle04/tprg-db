@@ -239,6 +239,10 @@ func (c *Core) GetKeysRange(start, end string, pageNumber int, itemsPerPage int)
 	return keys, nil
 }
 
+func (c *Core) ValidateSSTable(tableName string) (bool, error) {
+	return c.lsm.ValidateSSTable(tableName)
+}
+
 func (c *Core) updateCache(key string, value []byte, timestamp uint64, tombstone bool) {
 	if c.cache.Exists(key) {
 		item := &Item{

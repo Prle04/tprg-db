@@ -122,6 +122,17 @@ func (lsm *LSM) GetMany(keys []string) ([]sstable.ISSTableItem, error) {
 	return results, nil
 }
 
+func (lsm *LSM) ValidateSSTable(tableName string) (bool, error) {
+	for _, level := range lsm.tables {
+		for _, reader := range level {
+			if reader.GetTableName() == tableName {
+				return reader.Validate()
+			}
+		}
+	}
+	return false, fmt.Errorf("SSTable %s not found in LSM tree", tableName)
+}
+
 func (lsm *LSM) Save() error {
 	filepath := path.Join(lsm.folderPath, FILE_NAME)
 	file := lsm.blockManager.OpenBlockedFile(filepath)
@@ -186,7 +197,7 @@ func (lsm *LSM) Load() error {
 			tableName := string(nameBytes)
 			reader := lsm.sstableManager.NewSSTableReader(tableName)
 			if reader == nil {
-				return fmt.Errorf("SSTable reader for table %s is nil", tableName)
+				continue // If the reader is nil, skip this table
 			}
 			lsm.tables[i] = append(lsm.tables[i], reader)
 		}
