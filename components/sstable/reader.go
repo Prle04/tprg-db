@@ -45,6 +45,10 @@ func newSSTableReader(
 		summary:            nil,
 		toc:                nil,
 	}
+	// Check if the file exists
+	if _, err := os.Stat(path + "-data.db"); os.IsNotExist(err) {
+		return nil // File does not exist, return nil
+	}
 	toc, err := table.loadTOC()
 	if err == nil {
 		table.toc = toc
