@@ -170,3 +170,60 @@ func (h *HyperLogLog) Load(file io.Reader) error {
 
 	return nil
 }
+
+func (h HyperLogLog) SerializeToBytes() []byte {
+	var result []byte
+
+	// Verzija
+	result = append(result, serialization.UInt8ToBytes(CURRENT_VERSION)...)
+
+	// p
+	result = append(result, serialization.UInt64ToBytes(h.p)...)
+
+	result = append(result, h.hashFun.Seed...)
+
+	for _, reg := range h.buckets {
+		result = append(result, serialization.UInt8ToBytes(reg)...)
+	}
+
+	return result
+}
+
+func (h *HyperLogLog) DeserializeFromBytes(data []byte) error {
+	offset := 0
+
+	if len(data) < 13 { // 1 + 8 + 4 minimalno, plus buckets
+		return fmt.Errorf("data too short to deserialize")
+	}
+
+	version := serialization.BytesToUInt8(data[offset : offset+1])
+	if version != CURRENT_VERSION {
+		return fmt.Errorf("got version %d, expected %d", version, CURRENT_VERSION)
+	}
+	offset += 1
+
+	h.p = serialization.BytesToUInt64(data[offset : offset+8])
+	offset += 8
+
+	h.m = 1 << h.p
+
+	if offset+4 > len(data) {
+		return fmt.Errorf("not enough data for hash seed")
+	}
+	seed := make([]byte, 4)
+	copy(seed, data[offset:offset+4])
+	h.hashFun = hash.HashWithSeed{Seed: seed}
+	offset += 4
+
+	if offset+int(h.m) > len(data) {
+		return fmt.Errorf("not enough data for buckets")
+	}
+
+	h.buckets = make([]uint8, h.m)
+	for i := uint64(0); i < h.m; i++ {
+		h.buckets[i] = serialization.BytesToUInt8(data[offset : offset+1])
+		offset++
+	}
+
+	return nil
+}
