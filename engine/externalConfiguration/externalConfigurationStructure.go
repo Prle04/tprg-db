@@ -7,13 +7,14 @@ import (
 )
 
 type ExternalConfiguration struct {
-	WAL          WALConfig          `json:"walConfig"`
-	Memtable     MemtableConfig     `json:"memtableConfig"`
-	Cache        CacheConfig        `json:"cacheConfig"`
-	BlockManager BlockManagerConfig `json:"blockManagerConfig"`
-	LSM          LSMConfig          `json:"lsmConfig"`
-	SSTable      SSTableConfig      `json:"sstableConfig"`
-	Compression  CompressionConfig  `json:"compressionConfig"`
+	WAL          WALConfig                `json:"wal"`
+	Memtable     MemtableConfig           `json:"memtable"`
+	Cache        CacheConfig              `json:"cache"`
+	BlockManager BlockManagerConfig       `json:"blockManager"`
+	LSM          LSMConfig                `json:"lsm"`
+	SSTable      SSTableConfig            `json:"sstable"`
+	Compression  CompressionConfig        `json:"compression"`
+	TokenBucket  TokenBucketConfiguration `json:"tokenBucket"`
 }
 
 func (ec *ExternalConfiguration) Validate() {
