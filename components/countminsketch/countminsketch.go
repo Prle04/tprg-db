@@ -135,7 +135,7 @@ func (cms *CountMinSketch) Load(file io.Reader) error {
 	buffer4 := [4]byte{}
 	n, err = file.Read(buffer4[:])
 	if err != nil {
-		fmt.Println("faild to read bytes ", err)
+		fmt.Println("faild to read k", err)
 		return err
 	}
 	if n != len(buffer4) {
@@ -146,7 +146,7 @@ func (cms *CountMinSketch) Load(file io.Reader) error {
 
 	n, err = file.Read(buffer4[:])
 	if err != nil {
-		fmt.Println("faild to read bytes ", err)
+		fmt.Println("faild to read m", err)
 		return err
 	}
 	if n != len(buffer4) {
@@ -155,7 +155,6 @@ func (cms *CountMinSketch) Load(file io.Reader) error {
 	}
 	cms.m = serialization.BytesToUInt32(buffer4[:])
 
-	// Reset hashFun
 	cms.hashFun = make([]hash.HashWithSeed, 0, cms.k)
 
 	for i := 0; i < int(cms.k); i++ {
@@ -164,7 +163,7 @@ func (cms *CountMinSketch) Load(file io.Reader) error {
 		}
 		n, err = file.Read(h.Seed)
 		if err != nil {
-			fmt.Println("faild to read bytes ", err)
+			fmt.Println("faild to read hash seed", err)
 			return err
 		}
 		if n != len(h.Seed) {
@@ -181,17 +180,94 @@ func (cms *CountMinSketch) Load(file io.Reader) error {
 		for j := 0; j < int(cms.m); j++ {
 			n, err = file.Read(buffer8[:])
 			if err != nil {
-				fmt.Println("faild to read bytes ", err)
+				fmt.Println("faild to read value", err)
 				return err
 			}
 			if n != len(buffer8) {
 				fmt.Printf("read only %d, but expected %d\n", n, len(buffer8))
 				return fmt.Errorf("read only %d, but expected %d", n, len(buffer8))
 			}
-			v := serialization.BytesToUInt64(buffer8[:])
-			row[j] = v
+			value := serialization.BytesToUInt64(buffer8[:])
+			row[j] = value
 		}
 		cms.matrix[i] = row
 	}
+	return nil
+}
+
+func (cms CountMinSketch) SerializeToBytes() []byte {
+	var result []byte
+
+	versionBytes := serialization.UInt8ToBytes(CURRENT_VERSION)
+	result = append(result, versionBytes...)
+
+	kBytes := serialization.UInt32ToBytes(cms.k)
+	result = append(result, kBytes...)
+
+	mBytes := serialization.UInt32ToBytes(cms.m)
+	result = append(result, mBytes...)
+
+	for i := 0; i < int(cms.k); i++ {
+		seed := cms.hashFun[i].Seed
+		result = append(result, seed...)
+	}
+
+	for i := 0; i < int(cms.k); i++ {
+		for j := 0; j < int(cms.m); j++ {
+			value := cms.matrix[i][j]
+			valueBytes := serialization.UInt64ToBytes(value)
+			result = append(result, valueBytes...)
+		}
+	}
+
+	return result
+}
+
+func (cms *CountMinSketch) DeserializeFromBytes(data []byte) error {
+	offset := 0
+
+	if len(data) < 9 {
+		return fmt.Errorf("data too short to deserialize")
+	}
+
+	version := serialization.BytesToUInt8(data[offset : offset+1])
+	if version != CURRENT_VERSION {
+		return fmt.Errorf("got version %d, but expected %d", version, CURRENT_VERSION)
+	}
+	offset += 1
+
+	cms.k = serialization.BytesToUInt32(data[offset : offset+4])
+	offset += 4
+
+	cms.m = serialization.BytesToUInt32(data[offset : offset+4])
+	offset += 4
+
+	cms.hashFun = make([]hash.HashWithSeed, cms.k)
+	for i := 0; i < int(cms.k); i++ {
+		if offset+4 > len(data) {
+			return fmt.Errorf("not enough data for hash seed %d", i)
+		}
+		seed := make([]byte, 4)
+		copy(seed, data[offset:offset+4])
+		cms.hashFun[i] = hash.HashWithSeed{
+			Seed: seed,
+		}
+		offset += 4
+	}
+
+	cms.matrix = make([][]uint64, cms.k)
+	for i := 0; i < int(cms.k); i++ {
+		row := make([]uint64, cms.m)
+		for j := 0; j < int(cms.m); j++ {
+			if offset+8 > len(data) {
+				return fmt.Errorf("not enough data for matrix[%d][%d]", i, j)
+			}
+			value := serialization.BytesToUInt64(data[offset : offset+8])
+			offset += 8
+			row[j] = value
+		}
+		cms.matrix[i] = row
+	}
+
 	return nil
 }
