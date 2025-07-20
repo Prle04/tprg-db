@@ -1,9 +1,11 @@
 package avltree
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"tprgdb/components/blockmanager"
+	"tprgdb/components/serialization"
 )
 
 const CURRENT_VERSION uint8 = 1
@@ -55,7 +57,6 @@ func CreateAVLTree() *AVLTree {
 	}
 }
 
-// ----------------------------- AVL LOGIKA -----------------------------
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -211,15 +212,12 @@ func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []*Data {
 		if n == nil {
 			return
 		}
-
 		if n.key >= lowerBound {
 			helper(n.leftChild)
 		}
-
 		if len(result) == perPage {
 			return
 		}
-
 		if n.key >= lowerBound && n.key <= upperBound {
 			if strings.HasPrefix(n.key, prefix) {
 				if count >= startIndex {
@@ -232,12 +230,10 @@ func (tree *AVLTree) PrefixScan(prefix string, page int, perPage int) []*Data {
 				}
 			}
 		}
-
 		if n.key <= upperBound {
 			helper(n.rightChild)
 		}
 	}
-
 	helper(tree.root)
 	return result
 }
@@ -253,15 +249,12 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
 		if n == nil {
 			return
 		}
-
 		if n.key >= from {
 			scan(n.leftChild)
 		}
-
 		if len(result) == perPage {
 			return
 		}
-
 		if n.key >= from && n.key <= to {
 			if count >= startIndex {
 				newData := createData(n.key, n.value)
@@ -276,100 +269,96 @@ func (tree *AVLTree) RangeScan(from, to string, page, perPage int) []*Data {
 			scan(n.rightChild)
 		}
 	}
-
 	scan(tree.root)
 	return result
 }
 
-func (tree *AVLTree) Find(key string) *Data {
+func (tree *AVLTree) Find(key string) uint64 {
 	node := find(tree.root, key)
-	return createData(node.key, node.value)
+	if node == nil {
+		return 0
+	}
+	return node.value
 }
 
 func (tree *AVLTree) GetNumberOfElements() uint64 {
 	return tree.numberOfElements
 }
 
-// ------------------ S E R I J A L I Z A C И Ј А ------------------
-/*
 func (tree *AVLTree) SerializeToBytes() []byte {
 	var buf bytes.Buffer
-	buf.WriteByte(CURRENT_VERSION)
 
-	// broj elemenata
-	buf.Write(serialization.UVarInt(tree.numberOfElements))
+	buf.Write(serialization.UInt8ToBytes(CURRENT_VERSION))
 
-	// rekurzivno čvorovi
+	buf.Write(serialization.UInt64ToBytes(tree.numberOfElements))
+
 	var serializeNode func(n *Node)
 	serializeNode = func(n *Node) {
 		if n == nil {
-			buf.WriteByte(0) // NIL marker
+			buf.Write(serialization.Int8ToBytes(0))
 			return
 		}
-		buf.WriteByte(1) // postoji čvor
+		buf.Write(serialization.Int8ToBytes(1))
 
-		keyBytes := []byte(n.key)
-		buf.Write(serialization.UVarInt(uint64(len(keyBytes))))
+		keyBytes := serialization.StringToBytes(n.key)
+		buf.Write(serialization.UInt64ToBytes(uint64(len(keyBytes))))
 		buf.Write(keyBytes)
 
-		buf.Write(serialization.UVarInt(n.value))
-		buf.Write(serialization.UVarInt(uint64(n.height)))
+		buf.Write(serialization.UInt64ToBytes(n.value))
 
 		serializeNode(n.leftChild)
 		serializeNode(n.rightChild)
 	}
-
 	serializeNode(tree.root)
+
 	return buf.Bytes()
 }
 
 func (tree *AVLTree) DeserializeFromBytes(data []byte) {
-	if len(data) == 0 || data[0] != CURRENT_VERSION {
-		return
-	}
-	data = data[1:]
+	buf := bytes.NewReader(data)
 
-	var idx int
-
-	readUVar := func() uint64 {
-		val, n := binary.Uvarint(data[idx:])
-		idx += n
-		return val
-	}
-	readBytes := func(length uint64) []byte {
-		res := data[idx : idx+int(length)]
-		idx += int(length)
-		return res
+	versionBuf := make([]byte, 1)
+	buf.Read(versionBuf)
+	version := serialization.BytesToUInt8(versionBuf)
+	if version != CURRENT_VERSION {
+		panic("unsupported version")
 	}
 
-	tree.numberOfElements = readUVar()
+	numBuf := make([]byte, 8)
+	buf.Read(numBuf)
+	tree.numberOfElements = serialization.BytesToUInt64(numBuf)
 
 	var deserializeNode func() *Node
 	deserializeNode = func() *Node {
-		if idx >= len(data) {
+		markerBuf := make([]byte, 1)
+		buf.Read(markerBuf)
+		marker := serialization.BytesToInt8(markerBuf)
+		if marker == 0 {
 			return nil
 		}
-		if data[idx] == 0 {
-			idx++
-			return nil
-		}
-		idx++ // skip marker
 
-		keyLen := readUVar()
-		key := string(readBytes(keyLen))
-		val := readUVar()
-		height := int(readUVar())
+		lenBuf := make([]byte, 8)
+		buf.Read(lenBuf)
+		keyLen := serialization.BytesToUInt64(lenBuf)
+
+		keyBytes := make([]byte, keyLen)
+		buf.Read(keyBytes)
+		key := serialization.BytesToString(keyBytes)
+
+		valBuf := make([]byte, 8)
+		buf.Read(valBuf)
+		value := serialization.BytesToUInt64(valBuf)
 
 		node := &Node{
 			key:    key,
-			value:  val,
-			height: height,
+			value:  value,
+			height: 1,
 		}
 		node.leftChild = deserializeNode()
 		node.rightChild = deserializeNode()
+		updateHeight(node)
 		return node
 	}
-
 	tree.root = deserializeNode()
 }
 
@@ -383,46 +372,50 @@ func (tree *AVLTree) DeserializeFromFile(file *blockmanager.BlockedFile) error {
 	if err != nil {
 		return err
 	}
-	if versionBytes[0] != CURRENT_VERSION {
-		return errors.New("version mismatch")
+	version := serialization.BytesToUInt8(versionBytes)
+	if version != CURRENT_VERSION {
+		return fmt.Errorf("unsupported version: %d", version)
 	}
 
-	tree.numberOfElements = 0
+	numBytes, err := file.Read(8)
+	if err != nil {
+		return err
+	}
+	tree.numberOfElements = serialization.BytesToUInt64(numBytes)
 
 	var deserializeNode func() (*Node, error)
 	deserializeNode = func() (*Node, error) {
-		marker, err := file.Read(1)
+		markerBytes, err := file.Read(1)
 		if err != nil {
 			return nil, err
 		}
-		if marker[0] == 0 {
+		marker := serialization.BytesToInt8(markerBytes)
+		if marker == 0 {
 			return nil, nil
 		}
 
-		_, keyLen, err := file.ReadUVariable()
+		keyLenBytes, err := file.Read(8)
 		if err != nil {
 			return nil, err
 		}
+		keyLen := serialization.BytesToUInt64(keyLenBytes)
+
 		keyBytes, err := file.Read(keyLen)
 		if err != nil {
 			return nil, err
 		}
-		key := string(keyBytes)
+		key := serialization.BytesToString(keyBytes)
 
-		_, val, err := file.ReadUVariable()
+		valBytes, err := file.Read(8)
 		if err != nil {
 			return nil, err
 		}
-
-		_, h, err := file.ReadUVariable()
-		if err != nil {
-			return nil, err
-		}
+		value := serialization.BytesToUInt64(valBytes)
 
 		node := &Node{
 			key:    key,
-			value:  val,
-			height: int(h),
+			value:  value,
+			height: 1,
 		}
 
 		node.leftChild, err = deserializeNode()
@@ -434,7 +427,7 @@ func (tree *AVLTree) DeserializeFromFile(file *blockmanager.BlockedFile) error {
 			return nil, err
 		}
 
-		tree.numberOfElements++
+		updateHeight(node)
 		return node, nil
 	}
 
@@ -445,4 +438,3 @@ func (tree *AVLTree) DeserializeFromFile(file *blockmanager.BlockedFile) error {
 	tree.root = root
 	return nil
 }
-*/
