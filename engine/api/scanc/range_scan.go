@@ -81,7 +81,7 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 
 	for len(c.currentItems) < c.pageSize {
 
-		candidateKeys, err := c.core.GetKeysRange(lowerBound, upperBound, pageCount, c.pageSize)
+		candidateKeys, err := c.core.GetKeysRange(lowerBound, upperBound, 1, c.pageSize)
 		if err != nil {
 			return nil, fmt.Errorf("error getting keys range: %w", err)
 		}
@@ -91,9 +91,12 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 		// Skip the first key if not the first iteration since it was already processed in the previous iteration
 		if !firstIteration {
 			candidateKeys = candidateKeys[1:]
-			firstIteration = false
 		}
-		lowerBound = candidateKeys[0] // In next iteration start from the next key
+		if len(candidateKeys) == 0 {
+			break // No more keys to process
+		}
+		firstIteration = false
+		lowerBound = candidateKeys[len(candidateKeys)-1] // In next iteration start from the last key
 		items, err := c.core.GetMany(candidateKeys)
 		if err != nil {
 			return nil, fmt.Errorf("error getting items: %w", err)
@@ -120,14 +123,16 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 			if len(c.currentItems) >= c.pageSize {
 				break // We have enough items for this page
 			}
-			pageCount++
 		}
+		pageCount++
 		// Cache the range for this page number
 	}
-	c.cache.AddElement(fmt.Sprintf("%d", pageNumber), &Range{
-		LowerBound: c.currentItems[0].GetKey(),
-		UpperBound: c.currentItems[len(c.currentItems)-1].GetKey(),
-	})
+	if len(c.currentItems) > 0 {
+		c.cache.AddElement(fmt.Sprintf("%d", pageNumber), &Range{
+			LowerBound: c.currentItems[0].GetKey(),
+			UpperBound: c.currentItems[len(c.currentItems)-1].GetKey(),
+		})
+	}
 	return c.currentItems, nil
 
 }
