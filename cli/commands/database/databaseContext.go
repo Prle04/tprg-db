@@ -107,6 +107,10 @@ func (rc *DatabaseContext) GetCommand(cmd *parser.ParsedCommand) commands.IComma
 		return NewCMSCommand(rc, rc.dbEngine)
 	case "sh":
 		return NewSHCommand(rc, rc.dbEngine)
+	case "clear":
+		return commands.NewClearCommand(rc)
+	case "help":
+		return NewHelpCommand(rc)
 	default:
 		return nil
 	}

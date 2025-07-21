@@ -41,6 +41,10 @@ func (ctx *HyperLogLogContext) GetCommand(cmd *parser.ParsedCommand) commands.IC
 		return NewCountCommand(ctx, ctx.dbEngine, cmd.Args[0])
 	case "exit":
 		return commands.NewBackCommand(ctx)
+	case "clear":
+		return commands.NewClearCommand(ctx)
+	case "help":
+		return NewHelpCommand(ctx)
 	default:
 		return nil
 	}

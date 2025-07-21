@@ -45,6 +45,10 @@ func (ctx *CountMinSketchContext) GetCommand(cmd *parser.ParsedCommand) commands
 		return NewCountCommand(ctx, ctx.dbEngine, cmd.Args[0], []byte(cmd.Args[1]))
 	case "exit":
 		return commands.NewBackCommand(ctx)
+	case "clear":
+		return commands.NewClearCommand(ctx)
+	case "help":
+		return NewHelpCommand(ctx)
 	default:
 		return nil
 	}

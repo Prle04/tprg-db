@@ -24,6 +24,10 @@ func (ctx *IterContext) GetCommand(cmd *parser.ParsedCommand) commands.ICommand 
 		return NewNextCommand(ctx, ctx.iterator)
 	case "stop":
 		return commands.NewBackCommand(ctx)
+	case "clear":
+		return commands.NewClearCommand(ctx)
+	case "help":
+		return NewHelpCommand(ctx)
 	default:
 		return nil
 	}
