@@ -3,10 +3,9 @@ package probabilistic
 import (
 	"errors"
 	"tprgdb/components/hyperloglog"
+	"tprgdb/engine/constants"
 	"tprgdb/engine/core"
 )
-
-const PREFIX_HLL = "H"
 
 type HyperLogLogAPI struct {
 	core *core.Core
@@ -25,14 +24,14 @@ func (api *HyperLogLogAPI) Create(name string, bits int) error {
 
 	hll := hyperloglog.New(uint64(bits))
 	bytes := hll.SerializeToBytes()
-	return api.core.Set(PREFIX_HLL+name, bytes)
+	return api.core.Set(constants.HLL_PREFIX+name, bytes)
 }
 
 func (api *HyperLogLogAPI) Delete(name string) error {
 	if name == "" {
 		return errors.New("HLL name cannot be empty")
 	}
-	return api.core.Delete(PREFIX_HLL + name)
+	return api.core.Delete(constants.HLL_PREFIX + name)
 }
 
 func (api *HyperLogLogAPI) Insert(name string, data []byte) error {
@@ -43,7 +42,7 @@ func (api *HyperLogLogAPI) Insert(name string, data []byte) error {
 		return errors.New("data to insert cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_HLL + name)
+	item, err := api.core.Get(constants.HLL_PREFIX + name)
 	if err != nil {
 		return err
 	}
@@ -55,7 +54,7 @@ func (api *HyperLogLogAPI) Insert(name string, data []byte) error {
 	hll.DeserializeFromBytes(item.GetValue())
 
 	hll.Insert(data)
-	return api.core.Set(PREFIX_HLL+name, hll.SerializeToBytes())
+	return api.core.Set(constants.HLL_PREFIX+name, hll.SerializeToBytes())
 }
 
 func (api *HyperLogLogAPI) Count(name string) (uint64, error) {
@@ -63,7 +62,7 @@ func (api *HyperLogLogAPI) Count(name string) (uint64, error) {
 		return 0, errors.New("HLL name cannot be empty")
 	}
 
-	item, err := api.core.Get(PREFIX_HLL + name)
+	item, err := api.core.Get(constants.HLL_PREFIX + name)
 	if err != nil {
 		return 0, err
 	}

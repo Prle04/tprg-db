@@ -1,8 +1,8 @@
 package scanc
 
-import "tprgdb/engine"
+import "tprgdb/engine/item"
 
 type IIterator interface {
-	Next() (*engine.FinalItem, error)
+	Next() (*item.DBItem, error)
 	Stop()
 }

@@ -2,13 +2,13 @@ package scanc
 
 import (
 	"errors"
-	"tprgdb/engine"
 	"tprgdb/engine/core"
+	"tprgdb/engine/item"
 )
 
 type RangeIterator struct {
 	rangeScanCursor *RangeScanCursor
-	buffer          []*engine.FinalItem
+	buffer          []*item.DBItem
 	currentIndex    int
 	stopped         bool
 }
@@ -16,12 +16,12 @@ type RangeIterator struct {
 func NewRangeIterator(core *core.Core, lowerBound, upperBound string) *RangeIterator {
 	return &RangeIterator{
 		rangeScanCursor: NewRangeScanCursor(core, lowerBound, upperBound, ITERATOR_BUFFER_SIZE),
-		buffer:          make([]*engine.FinalItem, 0, ITERATOR_BUFFER_SIZE),
+		buffer:          make([]*item.DBItem, 0, ITERATOR_BUFFER_SIZE),
 		currentIndex:    -1,
 	}
 }
 
-func (it *RangeIterator) Next() (*engine.FinalItem, error) {
+func (it *RangeIterator) Next() (*item.DBItem, error) {
 	if it.stopped {
 		return nil, errors.New("iterator has been stopped") // Iterator has been stopped
 	}

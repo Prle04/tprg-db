@@ -1,11 +1,14 @@
 package scanc
 
-import "tprgdb/engine"
+import "tprgdb/engine/item"
+
+// Remove direct import to avoid cycle
+// import "tprgdb/engine"
 
 type ICursor interface {
-	GetPage(pageNumber int) ([]*engine.FinalItem, error)
+	GetPage(pageNumber int) ([]*item.DBItem, error)
 	GetCurrentPage() int
 	GetPageSize() int
-	NextPage() ([]*engine.FinalItem, error)
-	PreviousPage() ([]*engine.FinalItem, error)
+	NextPage() ([]*item.DBItem, error)
+	PreviousPage() ([]*item.DBItem, error)
 }

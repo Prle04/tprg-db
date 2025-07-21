@@ -4,11 +4,8 @@ import (
 	"errors"
 	"time"
 	"tprgdb/components/serialization"
+	"tprgdb/engine/constants"
 	"tprgdb/engine/core"
-)
-
-const (
-	TOKEN_BUCKET_PREFIX = "T"
 )
 
 type TokenBucket struct {
@@ -29,17 +26,20 @@ func (tb *TokenBucket) Validate(username string) error {
 	if username == "" {
 		return errors.New("username cannot be empty")
 	}
-	token, err := tb.core.Get(TOKEN_BUCKET_PREFIX + username)
+	token, err := tb.core.Get(constants.TOKEN_BUCKET_PREFIX + username)
 	if err != nil {
 		return err
 	}
-	if token == nil || token.IsDeleted() {
-		return errors.New("bucket not found for user: " + username)
-	}
 	bucket := &Bucket{}
-	if err := bucket.DeserializeFromBytes(token.GetValue()); err != nil {
+	if token == nil || token.IsDeleted() {
+		// Users first login so we need to initialize their token bucket
+		bucket.Tokens = tb.tokenCount
+		bucket.LastRefresh = time.Now().Unix()
+
+	} else if err := bucket.DeserializeFromBytes(token.GetValue()); err != nil {
 		return errors.New("failed to deserialize bucket for user: " + username + ", error: " + err.Error())
 	}
+
 	if time.Now().Unix()-bucket.LastRefresh > tb.refreshDuration {
 		bucket.Tokens = tb.tokenCount // Reset tokens if the bucket hasn't been refreshed in the specified duration
 		bucket.LastRefresh = time.Now().Unix()
@@ -48,7 +48,7 @@ func (tb *TokenBucket) Validate(username string) error {
 		return errors.New("no tokens available for user: " + username)
 	}
 	bucket.Tokens-- // Consume a token
-	tb.core.Set(TOKEN_BUCKET_PREFIX+username, bucket.SerializeToBytes())
+	tb.core.Set(constants.TOKEN_BUCKET_PREFIX+username, bucket.SerializeToBytes())
 	return nil
 }
 

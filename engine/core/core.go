@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"path"
 	"time"
 	"tprgdb/components/avltree"
 	"tprgdb/components/blockmanager"
@@ -11,10 +13,12 @@ import (
 	"tprgdb/components/memtable"
 	"tprgdb/components/sstable"
 	walPackage "tprgdb/components/wal"
+	"tprgdb/engine/constants"
 	externalconfiguration "tprgdb/engine/externalConfiguration"
 )
 
 type Core struct {
+	dbName             string
 	wal                *walPackage.WriteAheadLog
 	blockManager       *blockmanager.BlockManager
 	lsm                *lsm.LSM
@@ -26,7 +30,7 @@ type Core struct {
 	cache          *lrucache.LRUCache[*Item]
 }
 
-func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error) {
+func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string) (*Core, error) {
 
 	blockSize := uint64(config.BlockManager.BlockSizeBytes)
 
@@ -63,6 +67,17 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 		return nil, err
 	}
 
+	// Load the compression manager from the file if it exists
+	compressionPath := path.Join("dbs", dbName, "compression", constants.COMPRESSION_FILENAME)
+	if _, err := os.Stat(compressionPath); !os.IsNotExist(err) {
+		// If the file  exist, we can load it
+		compressionFile := blockManager.OpenBlockedFile(compressionPath)
+		err = compressionManager.DeserializeFromFile(compressionFile)
+		if err != nil {
+			return nil, fmt.Errorf("error deserializing compression manager: %w", err)
+		}
+	}
+	// Load existing data from WAL into Memtable
 	for it := range wal.Iterate() {
 		if it.Err != nil {
 			return nil, it.Err
@@ -82,6 +97,7 @@ func NewCore(config *externalconfiguration.ExternalConfiguration) (*Core, error)
 	}
 
 	return &Core{
+		dbName:             dbName,
 		wal:                wal,
 		blockManager:       blockManager,
 		lsm:                lsm,
@@ -275,6 +291,9 @@ func (c *Core) flush(compressedKey uint64) error {
 		}
 		c.wal.DeleteUntil(lastSegment)
 	}
+	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
+	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
+	c.compressionManager.SerializeToFile(compressionFile)
 	return nil
 }
 
@@ -298,7 +317,7 @@ func (i Item) IsDeleted() bool {
 	return i.tombstone
 }
 
-func Shutdown(c *Core) error {
+func (c *Core) Shutdown() error {
 	if err := c.wal.Close(); err != nil {
 		return fmt.Errorf("error closing WAL: %w", err)
 	}
@@ -307,6 +326,11 @@ func Shutdown(c *Core) error {
 	}
 	if err := c.lsm.Save(); err != nil {
 		return fmt.Errorf("error closing LSM: %w", err)
+	}
+	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
+	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
+	if err := c.compressionManager.SerializeToFile(compressionFile); err != nil {
+		return fmt.Errorf("error closing CompressionManager: %w", err)
 	}
 	return nil
 }
