@@ -1,4 +1,4 @@
-package scanc
+package scans
 
 const (
 	CACHE_SIZE           = 10 // Example cache size, adjust as needed

@@ -24,5 +24,5 @@ func (i *DBItem) GetUnixNanoTimestamp() uint64 {
 	return uint64(i.Timestamp.UnixNano())
 }
 func (i *DBItem) GetTimestampString() string {
-	return i.Timestamp.Format("02.01.2006")
+	return i.Timestamp.Format("02.01.2006 15:04:05")
 }

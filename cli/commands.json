@@ -1,0 +1,466 @@
+{
+  "contexts": [
+    {
+      "name": "root",
+      "description": "Root context of the CLI application",
+      "commands": [
+        {
+          "name": "quit",
+          "description": "Exit the application",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "new-db",
+          "description": "Create a new database with given name and credentials",
+          "args": [
+            { "name": "dbName", "type": "string", "required": true, "description": "Name of the new database" },
+            { "name": "username", "type": "string", "required": true, "description": "Admin username" },
+            { "name": "password", "type": "string", "required": true, "description": "Admin password" }
+          ],
+          "flags": [],
+          "nextState": "database"
+        },
+        {
+          "name": "login",
+          "description": "Log into an existing database with credentials",
+          "args": [
+            { "name": "dbName", "type": "string", "required": true, "description": "Database name" },
+            { "name": "username", "type": "string", "required": true, "description": "Username" },
+            { "name": "password", "type": "string", "required": true, "description": "Password" }
+          ],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "database",
+      "description": "Database context with operations on a single database",
+      "commands": [
+        {
+          "name": "logout",
+          "description": "Save state and return to root context",
+          "args": [],
+          "flags": [],
+          "nextState": "root"
+        },
+        {
+          "name": "get",
+          "description": "Retrieve the value for a given key",
+          "args": [
+            { "name": "key", "type": "string", "required": true, "description": "Key to retrieve" }
+          ],
+          "flags": [
+            { "name": "--file", "alias": "-f", "type": "string", "required": false, "description": "Output file name to save the value" }
+          ],
+          "nextState": null
+        },
+        {
+          "name": "get-many",
+          "description": "Retrieve values for multiple keys",
+          "args": [
+            { "name": "keys", "type": "string", "required": true, "variadic": true, "description": "One or more keys to retrieve" }
+          ],
+          "flags": [
+            { "name": "--file", "alias": "-f", "type": "string", "required": false, "variadic": true, "description": "List of output filenames" }
+          ],
+          "nextState": null
+        },
+        {
+          "name": "set",
+          "description": "Set the value for a given key, optionally reading the value from a file",
+          "args": [
+            { "name": "key", "type": "string", "required": true, "description": "Key to set" }
+          ],
+          "flags": [
+            { "name": "--file", "alias": "-f", "type": "string", "required": false, "description": "Read value from the specified file" }
+          ],
+          "nextState": null
+        },
+        {
+          "name": "delete",
+          "description": "Delete a key and its value from the database",
+          "args": [
+            { "name": "key", "type": "string", "required": true, "description": "Key to delete" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "validate",
+          "description": "Validate the internal structure of the specified table",
+          "args": [
+            { "name": "tableName", "type": "string", "required": true, "description": "Name of the table to validate" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "bf",
+          "description": "Enter Bloom Filter subsystem context",
+          "args": [],
+          "flags": [],
+          "nextState": "bf"
+        },
+        {
+          "name": "cms",
+          "description": "Enter Count-Min Sketch subsystem context",
+          "args": [],
+          "flags": [],
+          "nextState": "cms"
+        },
+        {
+          "name": "hll",
+          "description": "Enter HyperLogLog subsystem context",
+          "args": [],
+          "flags": [],
+          "nextState": "hll"
+        },
+        {
+          "name": "sh",
+          "description": "Enter SimCache (SH) subsystem context",
+          "args": [],
+          "flags": [],
+          "nextState": "sh"
+        },
+        {
+          "name": "scan-prefix",
+          "description": "Enter prefix scan mode starting with the given prefix, paginated",
+          "args": [
+            { "name": "prefix", "type": "string", "required": true, "description": "Key prefix to scan" },
+            { "name": "itemsPerPage", "type": "int", "required": true, "description": "Number of items to return per page" }
+          ],
+          "flags": [],
+          "nextState": "prefix-scan"
+        },
+        {
+          "name": "scan-range",
+          "description": "Enter range scan mode from start to end key, paginated",
+          "args": [
+            { "name": "start", "type": "string", "required": true, "description": "Start key (inclusive)" },
+            { "name": "end", "type": "string", "required": true, "description": "End key (inclusive)" },
+            { "name": "itemsPerPage", "type": "int", "required": true, "description": "Number of items to return per page" }
+          ],
+          "flags": [],
+          "nextState": "range-scan"
+        },
+        {
+          "name": "range-iter",
+          "description": "Enter range iteration mode to iterate from start to end key",
+          "args": [
+            { "name": "start", "type": "string", "required": true, "description": "Start key (inclusive)" },
+            { "name": "end", "type": "string", "required": true, "description": "End key (inclusive)" }
+          ],
+          "flags": [],
+          "nextState": "range-iter"
+        },
+        {
+          "name": "prefix-iter",
+          "description": "Enter prefix iteration mode for keys starting with the given prefix",
+          "args": [
+            { "name": "prefix", "type": "string", "required": true, "description": "Key prefix to iterate over" }
+          ],
+          "flags": [],
+          "nextState": "prefix-iter"
+        }
+      ]
+    },
+    {
+      "name": "prefix-scan",
+      "description": "Prefix scan context",
+      "commands": [
+        {
+          "name": "page-next",
+          "description": "Advance to the next page of scan results",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "page-prev",
+          "description": "Go back to the previous page of scan results",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "page",
+          "description": "Jump to a specific page number of scan results",
+          "args": [
+            { "name": "pageNumber", "type": "int" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the scan context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "range-scan",
+      "description": "Range scan context",
+      "commands": [
+        {
+          "name": "page-next",
+          "description": "Advance to the next page of scan results",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "page-prev",
+          "description": "Go back to the previous page of scan results",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "page",
+          "description": "Jump to a specific page number of scan results",
+          "args": [
+            { "name": "pageNumber", "type": "int" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the scan context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "range-iter",
+      "description": "Range iterator context",
+      "commands": [
+        {
+          "name": "next",
+          "description": "Advance to the next key-value pair in the iterator",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "stop",
+          "description": "Stop the iterator and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "prefix-iter",
+      "description": "Prefix iterator context",
+      "commands": [
+        {
+          "name": "next",
+          "description": "Advance to the next key-value pair in the iterator",
+          "args": [],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "stop",
+          "description": "Stop the iterator and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "bf",
+      "description": "Bloom Filter subsystem context",
+      "commands": [
+        {
+          "name": "create",
+          "description": "Create a new Bloom filter with the given name",
+          "args": [{ "name": "filterName", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "delete",
+          "description": "Delete an existing Bloom filter by name",
+          "args": [{ "name": "filterName", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "insert",
+          "description": "Insert a value into the specified Bloom filter",
+          "args": [
+            { "name": "filterName", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "is-not-in",
+          "description": "Check if a value is definitely not in the specified Bloom filter",
+          "args": [
+            { "name": "filterName", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the Bloom Filter context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "cms",
+      "description": "Count-Min Sketch subsystem context",
+      "commands": [
+        {
+          "name": "create",
+          "description": "Create a new Count-Min Sketch with the given name",
+          "args": [{ "name": "name", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "delete",
+          "description": "Delete an existing Count-Min Sketch by name",
+          "args": [{ "name": "name", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "insert",
+          "description": "Insert a value into the specified Count-Min Sketch",
+          "args": [
+            { "name": "name", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "count",
+          "description": "Estimate the count of a value in the specified Count-Min Sketch",
+          "args": [
+            { "name": "name", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the Count-Min Sketch context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "hll",
+      "description": "HyperLogLog subsystem context",
+      "commands": [
+        {
+          "name": "create",
+          "description": "Create a new HyperLogLog with the given name",
+          "args": [{ "name": "name", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "delete",
+          "description": "Delete an existing HyperLogLog by name",
+          "args": [{ "name": "name", "type": "string" }],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "insert",
+          "description": "Insert a value into the specified HyperLogLog",
+          "args": [
+            { "name": "name", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "count",
+          "description": "Estimate the cardinality of values in the specified HyperLogLog",
+          "args": [
+            { "name": "name", "type": "string" },
+            { "name": "value", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the HyperLogLog context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    },
+    {
+      "name": "sh",
+      "description": "Sim Hash subsystem context",
+      "commands": [
+        {
+          "name": "fingerprint",
+          "description": "Generate and store a fingerprint for the given text under the specified name",
+          "args": [
+            { "name": "name", "type": "string" },
+            { "name": "text", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "fingerprint",
+          "description": "Generate and store a fingerprint from file contents under the specified name",
+          "args": [{ "name": "name", "type": "string" }],
+          "flags": [
+            { "name": "f", "long": "filename", "type": "string", "required": true }
+          ],
+          "nextState": null
+        },
+        {
+          "name": "distance",
+          "description": "Compute the similarity distance between two fingerprints",
+          "args": [
+            { "name": "fingerprint1", "type": "string" },
+            { "name": "fingerprint2", "type": "string" }
+          ],
+          "flags": [],
+          "nextState": null
+        },
+        {
+          "name": "exit",
+          "description": "Exit the SimCache context and return to the database context",
+          "args": [],
+          "flags": [],
+          "nextState": "database"
+        }
+      ]
+    }
+  ]
+}

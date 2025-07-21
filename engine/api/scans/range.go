@@ -1,4 +1,4 @@
-package scanc
+package scans
 
 type Range struct {
 	LowerBound string
