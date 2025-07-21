@@ -528,6 +528,47 @@ func testGetMany(t *testing.T, compression bool, mode string) {
 	}
 }
 
+func testSSTableReaderDelete(t *testing.T, mode string) {
+	testDir := setupTestDir(t)
+	// defer cleanupTestDir(t, testDir)
+
+	compressionManager := NewCompressionMockup(true)
+
+	sstableManger := sstable.NewSSTableManager(testDir, mode, 10, BM, compressionManager)
+
+	items, _ := generateItems(100, compressionManager)
+
+	// Create a test SSTable iterator
+	iterator := sstable.NewSSListIterator(items, compressionManager)
+
+	_, err := sstableManger.CreateSSTable("test-table-delete", iterator, uint64(len(items)))
+	if err != nil {
+		t.Fatalf("failed to create SSTable: %v", err)
+	}
+
+	reader := sstableManger.NewSSTableReader("test-table-delete")
+	if reader == nil {
+		t.Fatal("failed to create SSTable reader")
+	}
+
+	err = reader.Delete()
+	if err != nil {
+		t.Fatalf("failed to delete SSTable: %v", err)
+	}
+
+	// Close the block manager to ensure all resources are released
+	err = BM.Close()
+	if err != nil {
+		t.Fatalf("failed to close block manager: %v", err)
+	}
+
+	// Check if the SSTable file was deleted
+	t.Logf("%s\n", reader.GetFilePath())
+	if _, err = os.Stat(reader.GetFilePath() + reader.GetTableName() + "-data.db"); !os.IsNotExist(err) {
+		t.Fatal("SSTable file was not deleted")
+	}
+}
+
 // CREATE TABLE TESTS
 
 func TestCreateSSTableWithCompressionOneFile(t *testing.T) {
@@ -611,4 +652,13 @@ func TestSSTableReaderValidateOneFile(t *testing.T) {
 }
 func TestSSTableReaderValidateMultiFile(t *testing.T) {
 	testSSTableReaderValidate(t, sstable.MODE_MULTI_FILE)
+}
+
+// DELETE TESTS
+
+func TestSSTableReaderDeleteOneFile(t *testing.T) {
+	testSSTableReaderDelete(t, sstable.MODE_ONE_FILE)
+}
+func TestSSTableReaderDeleteMultiFile(t *testing.T) {
+	testSSTableReaderDelete(t, sstable.MODE_MULTI_FILE)
 }

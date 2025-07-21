@@ -35,6 +35,8 @@ func (l *LSMConfig) Validate(dbName string) {
 	if _, exists := validAlgorithms[l.Algorithm]; !exists {
 		l.Algorithm = "size-tier" // Default to size_tiered if invalid
 	}
+	l.SizeTier.Validate(dbName)
+	l.Leved.Validate(dbName)
 }
 
 func (s *SizeTierConfig) Validate(dbName string) {

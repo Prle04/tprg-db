@@ -129,10 +129,14 @@ func (m *BlockManager) closeFile(filepath string) error {
 
 func (m *BlockManager) deleteFile(filepath string) error {
 	iterator := m.cache.GetIterator()
+	fileNames := make([]string, 0)
 	for _, block, ok := iterator.Next(); ok; _, block, ok = iterator.Next() {
 		if block.filename == filepath {
-			m.removeBlock(block.filename)
+			fileNames = append(fileNames, block.GetPath())
 		}
+	}
+	for _, blockpath := range fileNames {
+		m.removeBlock(blockpath)
 	}
 	return os.Remove(filepath)
 }

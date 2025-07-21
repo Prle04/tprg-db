@@ -104,6 +104,25 @@ func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string)
 				return nil, fmt.Errorf("error setting item in memtable: %w", err)
 			}
 		}
+		for items, lastSegment := memtable.Flush(); items != nil; items, lastSegment = memtable.Flush() {
+			data := make([]sstable.ISSTableItem, len(items))
+			for i, item := range items {
+				compressedKey := compressionManager.Add(item.GetKey())
+				data[i] = &sstable.SSItem{
+					Key:           item.GetKey(),
+					CompressedKey: compressedKey,
+					Value:         item.GetValue(),
+					Timestamp:     item.GetTimestamp(),
+					Tombstone:     item.IsDeleted(),
+				}
+			}
+			lsm.AddTable(data)
+			err := lsm.Save()
+			if err != nil {
+				return nil, err
+			}
+			wal.DeleteUntil(lastSegment)
+		}
 	}
 
 	return &Core{
