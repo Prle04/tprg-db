@@ -15,7 +15,7 @@ type DeleteCommand struct {
 func (cmd *DeleteCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Delete(cmd.key)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("Key '%s' deleted successfully.\n", cmd.key)
 	return cmd.caller, nil

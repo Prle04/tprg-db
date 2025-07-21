@@ -161,6 +161,7 @@ func (c *Core) Set(key string, value []byte) error {
 	if err := c.wal.Add(key, value); err != nil {
 		return err
 	}
+	c.wal.Sync()
 	if err := c.memtable.Set(key, value, c.wal.GetCurrentSegmentNumber()); err != nil {
 		return err
 	}
@@ -179,6 +180,7 @@ func (c *Core) Delete(key string) error {
 	if err := c.wal.Delete(key); err != nil {
 		return err
 	}
+	c.wal.Sync()
 	if err := c.memtable.Delete(key, c.wal.GetCurrentSegmentNumber()); err != nil {
 		return err
 	}

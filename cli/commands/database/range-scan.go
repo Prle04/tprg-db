@@ -17,7 +17,7 @@ type RangeScanCommand struct {
 func (cmd *RangeScanCommand) Execute() (commands.IContext, error) {
 	cursor, err := cmd.dbEngine.RangeScan(cmd.start, cmd.end, cmd.pageSize)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	scanContext := scan.NewScanContext(cmd.caller, cmd.dbEngine, cursor, "RS")
 	return scanContext, nil

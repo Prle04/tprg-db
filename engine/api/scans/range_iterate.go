@@ -1,7 +1,6 @@
 package scans
 
 import (
-	"errors"
 	"tprgdb/engine/core"
 	"tprgdb/engine/item"
 )
@@ -23,7 +22,7 @@ func NewRangeIterator(core *core.Core, lowerBound, upperBound string) *RangeIter
 
 func (it *RangeIterator) Next() (*item.DBItem, error) {
 	if it.stopped {
-		return nil, errors.New("iterator has been stopped") // Iterator has been stopped
+		return nil, nil // Iterator has been stopped
 	}
 
 	if it.currentIndex >= len(it.buffer) || it.rangeScanCursor.GetCurrentPage() == 0 {
@@ -36,7 +35,7 @@ func (it *RangeIterator) Next() (*item.DBItem, error) {
 
 		if len(it.buffer) == 0 {
 			it.stopped = true
-			return nil, END
+			return nil, nil // No more items to iterate
 		}
 	}
 

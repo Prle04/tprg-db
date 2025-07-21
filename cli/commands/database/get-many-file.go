@@ -18,7 +18,7 @@ func (cmd *GetManyFileCommand) Execute() (commands.IContext, error) {
 
 	items, err := cmd.dbEngine.GetMany(cmd.keys)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	totalItems := 0
 	writtenItems := 0

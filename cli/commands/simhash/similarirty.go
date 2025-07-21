@@ -16,7 +16,7 @@ type SimilarityCommand struct {
 func (cmd *SimilarityCommand) Execute() (commands.IContext, error) {
 	distance, err := cmd.dbEngine.Probabilistic.SimHash.Similarity(cmd.name1, cmd.name2)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Println(distance)
 	return cmd.caller, nil

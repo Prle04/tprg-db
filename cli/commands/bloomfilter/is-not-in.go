@@ -16,7 +16,7 @@ type IsNotInCommand struct {
 func (cmd *IsNotInCommand) Execute() (commands.IContext, error) {
 	isNotIn, err := cmd.dbEngine.Probabilistic.BloomFilter.IsNotIn(cmd.name, cmd.value)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	if isNotIn {
 		fmt.Printf("Value '%s' is not in bloom filter '%s'.\n", cmd.value, cmd.name)

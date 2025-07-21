@@ -17,11 +17,11 @@ type SetFileCommand struct {
 func (cmd *SetFileCommand) Execute() (commands.IContext, error) {
 	value, err := os.ReadFile(cmd.fileName)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	err = cmd.dbEngine.Set(cmd.key, value)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("Key '%s' set successfully.\n", cmd.key)
 	return cmd.caller, nil

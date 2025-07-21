@@ -147,6 +147,10 @@ func (wal *WriteAheadLog) Close() error {
 	return wal.currentSegment.file.Close()
 }
 
+func (wal *WriteAheadLog) Sync() error {
+	return wal.currentSegment.file.Sync()
+}
+
 func (wal *WriteAheadLog) GetCurrentSegmentNumber() uint64 {
 	return wal.currentSegment.segmentNumber
 }

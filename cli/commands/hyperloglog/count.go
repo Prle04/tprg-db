@@ -15,7 +15,7 @@ type CountCommand struct {
 func (cmd *CountCommand) Execute() (commands.IContext, error) {
 	count, err := cmd.dbEngine.Probabilistic.HyperLogLog.Count(cmd.name)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Println(count)
 	return cmd.caller, nil

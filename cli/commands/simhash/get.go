@@ -15,7 +15,7 @@ type GetCommand struct {
 func (cmd *GetCommand) Execute() (commands.IContext, error) {
 	fg, err := cmd.dbEngine.Probabilistic.SimHash.Get(cmd.name)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Println(fg)
 	return cmd.caller, nil

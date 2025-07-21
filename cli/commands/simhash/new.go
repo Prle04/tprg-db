@@ -16,7 +16,7 @@ type NewCommand struct {
 func (cmd *NewCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Probabilistic.SimHash.Create(cmd.name, cmd.text)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("Fingerprint '%s' created  successfully.\n", cmd.name)
 	return cmd.caller, nil

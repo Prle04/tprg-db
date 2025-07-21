@@ -20,7 +20,7 @@ type IterContext struct {
 func (ctx *IterContext) GetCommand(cmd *parser.ParsedCommand) commands.ICommand {
 	switch cmd.Command {
 
-	case "page-next":
+	case "next":
 		return NewNextCommand(ctx, ctx.iterator)
 	case "stop":
 		return commands.NewBackCommand(ctx)
