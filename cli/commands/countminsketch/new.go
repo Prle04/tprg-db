@@ -17,7 +17,7 @@ type NewCommand struct {
 func (cmd *NewCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Probabilistic.CountMinSketch.Create(cmd.name, cmd.k, cmd.m)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("CMS '%s' created  successfully.\n", cmd.name)
 	return cmd.caller, nil

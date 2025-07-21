@@ -129,8 +129,8 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 	}
 	if len(c.currentItems) > 0 {
 		c.cache.AddElement(fmt.Sprintf("%d", pageNumber), &Range{
-			LowerBound: c.currentItems[0].GetKey(),
-			UpperBound: c.currentItems[len(c.currentItems)-1].GetKey(),
+			LowerBound: constants.DATA_PREFIX + c.currentItems[0].GetKey(),
+			UpperBound: constants.DATA_PREFIX + c.currentItems[len(c.currentItems)-1].GetKey(),
 		})
 	}
 	return c.currentItems, nil

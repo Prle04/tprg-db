@@ -16,7 +16,7 @@ type PrefixScanCommand struct {
 func (cmd *PrefixScanCommand) Execute() (commands.IContext, error) {
 	cursor, err := cmd.dbEngine.PrefixScan(cmd.prefix, cmd.pageSize)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	scanContext := scan.NewScanContext(cmd.caller, cmd.dbEngine, cursor, "PS")
 	return scanContext, nil

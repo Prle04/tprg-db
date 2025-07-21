@@ -16,7 +16,7 @@ func (cmd *PagePrevCommand) Execute() (commands.IContext, error) {
 	// Fetch the previous page of results
 	results, err := cmd.cursor.PreviousPage()
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 
 	if len(results) == 0 {

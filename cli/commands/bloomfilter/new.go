@@ -17,7 +17,7 @@ type NewCommand struct {
 func (cmd *NewCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Probabilistic.BloomFilter.Create(cmd.name, cmd.numberOfElements, cmd.errorRate)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("Bloom filter '%s' created  successfully.\n", cmd.name)
 	return cmd.caller, nil

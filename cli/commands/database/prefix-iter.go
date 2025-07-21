@@ -15,7 +15,7 @@ type PrefixIterCommand struct {
 func (cmd *PrefixIterCommand) Execute() (commands.IContext, error) {
 	iterator, err := cmd.dbEngine.PrefixIterate(cmd.prefix)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	scanContext := iter.NewIterContext(cmd.caller, cmd.dbEngine, iterator, "PI")
 	return scanContext, nil

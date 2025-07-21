@@ -15,7 +15,7 @@ type DeleteCommand struct {
 func (cmd *DeleteCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Probabilistic.CountMinSketch.Delete(cmd.name)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("CMS '%s' deleted successfully.\n", cmd.name)
 	return cmd.caller, nil

@@ -47,7 +47,6 @@ func (cli *CLIApp) Run() {
 		cli.context, err = command.Execute() // Execute the command
 		if err != nil {
 			fmt.Println(err.Error())
-			continue
 		}
 	}
 }

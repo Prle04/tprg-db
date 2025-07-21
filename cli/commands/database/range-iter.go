@@ -16,7 +16,7 @@ type RangeIterCommand struct {
 func (cmd *RangeIterCommand) Execute() (commands.IContext, error) {
 	iterator, err := cmd.dbEngine.RangeIterate(cmd.start, cmd.end)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	scanContext := iter.NewIterContext(cmd.caller, cmd.dbEngine, iterator, "RI")
 	return scanContext, nil

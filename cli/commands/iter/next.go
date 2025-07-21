@@ -16,12 +16,11 @@ func (cmd *NextCommand) Execute() (commands.IContext, error) {
 	// Fetch the next page of results
 	item, err := cmd.iterator.Next()
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 
 	if item == nil {
 		fmt.Printf("No more items to iterate.\n")
-		cmd.caller.Close()
 		return cmd.caller.GetOwner(), nil
 	}
 

@@ -5,11 +5,6 @@ type BackCommand struct {
 }
 
 func (cmd *BackCommand) Execute() (IContext, error) {
-	// Simply return the caller context to go back
-	err := cmd.caller.Close()
-	if err != nil {
-		return nil, err
-	}
 	return cmd.caller.GetOwner(), nil
 }
 

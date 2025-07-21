@@ -16,7 +16,7 @@ type CountCommand struct {
 func (cmd *CountCommand) Execute() (commands.IContext, error) {
 	count, err := cmd.dbEngine.Probabilistic.CountMinSketch.Count(cmd.name, cmd.value)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Println(count)
 	return cmd.caller, nil

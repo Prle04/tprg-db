@@ -16,7 +16,7 @@ type SetCommand struct {
 func (cmd *SetCommand) Execute() (commands.IContext, error) {
 	err := cmd.dbEngine.Set(cmd.key, cmd.value)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	fmt.Printf("Key '%s' set successfully.\n", cmd.key)
 	return cmd.caller, nil

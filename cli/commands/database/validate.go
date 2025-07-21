@@ -15,7 +15,7 @@ type ValidateCommand struct {
 func (cmd *ValidateCommand) Execute() (commands.IContext, error) {
 	valid, err := cmd.dbEngine.Validate(cmd.tableName)
 	if err != nil {
-		return nil, err
+		return cmd.caller, err
 	}
 	if valid {
 		fmt.Printf("table '%s' is valid.\n", cmd.tableName)
