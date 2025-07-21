@@ -2,6 +2,7 @@ package skiplist
 
 import (
 	"math/rand"
+	"time"
 )
 
 type SkipListNode struct {
@@ -75,11 +76,13 @@ func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
 		updateNodes[i] = current
 		// if we find the key, we update it and return
 		if current.right != nil && current.right.key == key {
+			timestamp := uint64(time.Now().Unix())
 			current = current.right
 			if value == nil {
 				value = current.data
 			}
 			for current != nil {
+				current.timestamp = timestamp
 				current.data = value
 				current.tombstone = tombstone
 				current = current.down
@@ -104,11 +107,13 @@ func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
 	}
 	var downNode *SkipListNode
 	// create the new node at each level
+	timestamp := uint64(time.Now().Unix())
 	for i := 0; i < newLevel; i++ {
 		newNode := &SkipListNode{
 			key:       key,
 			data:      value,
 			tombstone: tombstone,
+			timestamp: timestamp,
 		}
 		// linking the horizontal pointers
 		if i < len(updateNodes) && updateNodes[i] != nil {
@@ -194,4 +199,3 @@ func (sn *SkipListNode) IsDeleted() bool {
 func (sn *SkipListNode) GetTimestamp() uint64 {
 	return sn.timestamp
 }
-
