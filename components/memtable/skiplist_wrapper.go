@@ -15,13 +15,13 @@ func NewSkipListMemtableAdapter() *SkipListMemtableAdapter {
 func (s *SkipListMemtableAdapter) Get(key string) IMemtableItem {
 	return s.skiplist.Get(key)
 }
-func (s *SkipListMemtableAdapter) Set(key string, value []byte) {
+func (s *SkipListMemtableAdapter) Set(key string, value []byte, timestamp uint64) {
 
-	s.skiplist.Set(key, value)
+	s.skiplist.Set(key, value, timestamp)
 }
 
-func (s *SkipListMemtableAdapter) Delete(key string) {
-	s.skiplist.Delete(key)
+func (s *SkipListMemtableAdapter) Delete(key string, timestamp uint64) {
+	s.skiplist.Delete(key, timestamp)
 }
 func (s *SkipListMemtableAdapter) Clear() {
 	s.skiplist.Clear()

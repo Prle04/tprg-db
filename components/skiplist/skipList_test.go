@@ -3,6 +3,7 @@ package skiplist
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 func TestSkipListSetAndGet(t *testing.T) {
@@ -10,7 +11,7 @@ func TestSkipListSetAndGet(t *testing.T) {
 	key := "foo"
 	value := []byte("bar")
 
-	sl.Set(key, value)
+	sl.Set(key, value, uint64(time.Now().Unix()))
 	node := sl.Get(key)
 
 	if node == nil {
@@ -35,8 +36,8 @@ func TestSkipListDelete(t *testing.T) {
 	key := "baz"
 	value := []byte("qux")
 
-	sl.Set(key, value)
-	sl.Delete(key)
+	sl.Set(key, value, uint64(time.Now().Unix()))
+	sl.Delete(key, uint64(time.Now().Unix()))
 
 	node := sl.Get(key)
 	if node == nil {
@@ -49,8 +50,8 @@ func TestSkipListDelete(t *testing.T) {
 
 func TestSkipListClear(t *testing.T) {
 	sl := NewSkipList()
-	sl.Set("a", []byte("1"))
-	sl.Set("b", []byte("2"))
+	sl.Set("a", []byte("1"), uint64(time.Now().Unix()))
+	sl.Set("b", []byte("2"), uint64(time.Now().Unix()))
 
 	sl.Clear()
 
@@ -65,9 +66,9 @@ func TestSkipListClear(t *testing.T) {
 
 func TestSkipListGetAllItems(t *testing.T) {
 	sl := NewSkipList()
-	sl.Set("a", []byte("1"))
-	sl.Set("b", []byte("2"))
-	sl.Set("c", []byte("3"))
+	sl.Set("a", []byte("1"), uint64(time.Now().Unix()))
+	sl.Set("b", []byte("2"), uint64(time.Now().Unix()))
+	sl.Set("c", []byte("3"), uint64(time.Now().Unix()))
 
 	items := sl.GetAllItems()
 	if len(items) != 3 {
@@ -84,8 +85,8 @@ func TestSkipListGetAllItems(t *testing.T) {
 
 func TestSkipListUpdateValue(t *testing.T) {
 	sl := NewSkipList()
-	sl.Set("x", []byte("old"))
-	sl.Set("x", []byte("new"))
+	sl.Set("x", []byte("old"), uint64(time.Now().Unix()))
+	sl.Set("x", []byte("new"), uint64(time.Now().Unix()))
 
 	node := sl.Get("x")
 	if node == nil {
