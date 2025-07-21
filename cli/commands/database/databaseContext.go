@@ -107,6 +107,11 @@ func (rc *DatabaseContext) GetCommand(cmd *parser.ParsedCommand) commands.IComma
 		return NewCMSCommand(rc, rc.dbEngine)
 	case "sh":
 		return NewSHCommand(rc, rc.dbEngine)
+	case "new-user":
+		if len(cmd.Args) != 2 {
+			return commands.NewErrorCommand(rc, fmt.Errorf("usage: new-user <username> <password>"))
+		}
+		return NewNewUserCommand(rc, rc.dbEngine, cmd.Args[0], cmd.Args[1])
 	case "clear":
 		return commands.NewClearCommand(rc)
 	case "help":

@@ -29,6 +29,7 @@ func (c *HelpCommand) Execute() (commands.IContext, error) {
 	fmt.Println("  sh                              - Enter Stable HyperLogLog subsystem")
 	fmt.Println("  clear                           - Clear the screen")
 	fmt.Println("  logout                          - Exit to login")
+	fmt.Println("  new-user <username> <password>  - Create a new user")
 	fmt.Println("  help                            - Show this help message")
 
 	return c.caller, nil
