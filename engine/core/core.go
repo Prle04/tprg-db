@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"time"
 	"tprgdb/components/avltree"
@@ -12,11 +13,8 @@ import (
 	"tprgdb/components/memtable"
 	"tprgdb/components/sstable"
 	walPackage "tprgdb/components/wal"
+	"tprgdb/engine/constants"
 	externalconfiguration "tprgdb/engine/externalConfiguration"
-)
-
-const (
-	COMPRESSION_FILENAME = "compression.bin"
 )
 
 type Core struct {
@@ -69,6 +67,17 @@ func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string)
 		return nil, err
 	}
 
+	// Load the compression manager from the file if it exists
+	compressionPath := path.Join("dbs", dbName, "compression", constants.COMPRESSION_FILENAME)
+	if _, err := os.Stat(compressionPath); !os.IsNotExist(err) {
+		// If the file  exist, we can load it
+		compressionFile := blockManager.OpenBlockedFile(compressionPath)
+		err = compressionManager.DeserializeFromFile(compressionFile)
+		if err != nil {
+			return nil, fmt.Errorf("error deserializing compression manager: %w", err)
+		}
+	}
+	// Load existing data from WAL into Memtable
 	for it := range wal.Iterate() {
 		if it.Err != nil {
 			return nil, it.Err
@@ -282,7 +291,7 @@ func (c *Core) flush(compressedKey uint64) error {
 		}
 		c.wal.DeleteUntil(lastSegment)
 	}
-	compressionPath := path.Join("dbs", c.dbName, "compression", COMPRESSION_FILENAME)
+	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
 	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
 	c.compressionManager.SerializeToFile(compressionFile)
 	return nil
@@ -317,6 +326,11 @@ func (c *Core) Shutdown() error {
 	}
 	if err := c.lsm.Save(); err != nil {
 		return fmt.Errorf("error closing LSM: %w", err)
+	}
+	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
+	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
+	if err := c.compressionManager.SerializeToFile(compressionFile); err != nil {
+		return fmt.Errorf("error closing CompressionManager: %w", err)
 	}
 	return nil
 }

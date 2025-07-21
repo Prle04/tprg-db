@@ -2,6 +2,7 @@ package blockmanager
 
 import (
 	"os"
+	osPath "path"
 	"strconv"
 	"strings"
 	"tprgdb/components/lrucache"
@@ -137,6 +138,11 @@ func (m *BlockManager) load(path string) (*Block, error) {
 	var filepath string = getBlockFilename(path)
 	orderNumber, err := getBlockOrderNumber(path)
 	if err != nil {
+		return nil, err
+	}
+	// get only the folder path to the file
+	folders := osPath.Dir(filepath)
+	if err := os.MkdirAll(folders, 0755); err != nil {
 		return nil, err
 	}
 	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"time"
@@ -212,7 +213,7 @@ func (engine *KVEngine) GetMany(keys []string) ([]*itemPackage.DBItem, error) {
 	}
 	for i, key := range keys {
 		if key == "" {
-			return nil, errors.New("key at index " + string(i) + " cannot be empty")
+			return nil, fmt.Errorf("key at index %d cannot be empty", i)
 		}
 		keys[i] = constants.DATA_PREFIX + key // Prefix each key with constants.DATA_PREFIX
 	}

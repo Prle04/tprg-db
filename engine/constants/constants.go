@@ -10,5 +10,6 @@ const (
 	USER_PREFIX         = "U"
 	PREFIX_SIZE         = 1
 
-	CONFIG_FILENAME = "config.json"
+	CONFIG_FILENAME      = "config.json"
+	COMPRESSION_FILENAME = "compression.bin"
 )

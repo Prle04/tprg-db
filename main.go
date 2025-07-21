@@ -11,6 +11,7 @@ func main() {
 		panic(err)
 	}
 	defer engine.Shutdown()
+
 	for i := 0; i < 73; i++ {
 		engine.Set(fmt.Sprintf("key-%03d", i), []byte(fmt.Sprintf("key-%03d", i)))
 	}
