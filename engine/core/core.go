@@ -96,11 +96,11 @@ func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string)
 			return nil, fmt.Errorf("nil record found in WAL")
 		}
 		if it.Record.GetTombstone() {
-			if err := memtable.Delete(it.Record.GetKey(), it.SegmentNumber); err != nil {
+			if err := memtable.Delete(it.Record.GetKey(), it.Record.GetTimestamp(), it.SegmentNumber); err != nil {
 				return nil, fmt.Errorf("error setting deleted item in memtable: %w", err)
 			}
 		} else {
-			if err := memtable.Set(it.Record.GetKey(), it.Record.GetValue(), it.SegmentNumber); err != nil {
+			if err := memtable.Set(it.Record.GetKey(), it.Record.GetValue(), it.Record.GetTimestamp(), it.SegmentNumber); err != nil {
 				return nil, fmt.Errorf("error setting item in memtable: %w", err)
 			}
 		}
@@ -181,7 +181,7 @@ func (c *Core) Set(key string, value []byte) error {
 		return err
 	}
 	c.wal.Sync()
-	if err := c.memtable.Set(key, value, c.wal.GetCurrentSegmentNumber()); err != nil {
+	if err := c.memtable.Set(key, value, uint64(time.Now().Unix()), c.wal.GetCurrentSegmentNumber()); err != nil {
 		return err
 	}
 
@@ -200,7 +200,7 @@ func (c *Core) Delete(key string) error {
 		return err
 	}
 	c.wal.Sync()
-	if err := c.memtable.Delete(key, c.wal.GetCurrentSegmentNumber()); err != nil {
+	if err := c.memtable.Delete(key, uint64(time.Now().Unix()), c.wal.GetCurrentSegmentNumber()); err != nil {
 		return err
 	}
 

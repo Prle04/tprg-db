@@ -2,7 +2,6 @@ package skiplist
 
 import (
 	"math/rand"
-	"time"
 )
 
 type SkipListNode struct {
@@ -65,7 +64,7 @@ func (sl *SkipList) Get(key string) *SkipListNode {
 // If the key does not exist, it creates a new node on random levels(its height) and inserts it into the skip list with the appropriate links and tombstone status.
 // It also manages the height of the skip list, ensuring that it grows as needed.
 
-func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
+func (sl *SkipList) updatingSkipList(key string, value []byte, timestamp uint64, tombstone bool) {
 	current := sl.head
 	// remember the nodes to update at each level
 	updateNodes := make([]*SkipListNode, sl.max_height)
@@ -76,7 +75,6 @@ func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
 		updateNodes[i] = current
 		// if we find the key, we update it and return
 		if current.right != nil && current.right.key == key {
-			timestamp := uint64(time.Now().Unix())
 			current = current.right
 			if value == nil {
 				value = current.data
@@ -107,7 +105,6 @@ func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
 	}
 	var downNode *SkipListNode
 	// create the new node at each level
-	timestamp := uint64(time.Now().Unix())
 	for i := 0; i < newLevel; i++ {
 		newNode := &SkipListNode{
 			key:       key,
@@ -132,13 +129,13 @@ func (sl *SkipList) updatingSkipList(key string, value []byte, tombstone bool) {
 }
 
 // Set adds a new key-value pair to the skip list or updates an existing key with a new value.
-func (sl *SkipList) Set(key string, value []byte) {
-	sl.updatingSkipList(key, value, false)
+func (sl *SkipList) Set(key string, value []byte, timestamp uint64) {
+	sl.updatingSkipList(key, value, timestamp, false)
 }
 
 // Delete marks a key as deleted in the skip list by setting its tombstone flag to true if the key doesnt exist it adds it and marks it as deleted.
-func (sl *SkipList) Delete(key string) {
-	sl.updatingSkipList(key, nil, true)
+func (sl *SkipList) Delete(key string, timestamp uint64) {
+	sl.updatingSkipList(key, nil, timestamp, true)
 }
 
 // Clear resets the skip list, removing all nodes and resetting the size and max height.

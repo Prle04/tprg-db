@@ -16,8 +16,8 @@ type IMemtableItem interface {
 // So far implementated: SkipList, HashMapWrapper, and a Btree.
 type IMemtableDataStructure interface {
 	Get(key string) IMemtableItem
-	Set(key string, value []byte)
-	Delete(key string)
+	Set(key string, value []byte, timestamp uint64)
+	Delete(key string, timestamp uint64)
 
 	Clear()
 
@@ -104,22 +104,22 @@ func (m *Memtable) Get(key string) IMemtableItem {
 	return nil // Key not found in any instance
 }
 
-func (m *Memtable) Set(key string, value []byte, segmentNumber uint64) error {
+func (m *Memtable) Set(key string, value []byte, timestamp uint64, segmentNumber uint64) error {
 	// Check if the current instance has reached the threshold
 	if m.instances[m.currentInstance].dataStructureInstance.GetNumberOfKeys() >= m.threshold {
 		m.moveToNextInstance()
 	}
-	m.instances[m.currentInstance].dataStructureInstance.Set(key, value)
+	m.instances[m.currentInstance].dataStructureInstance.Set(key, value, timestamp)
 	m.instances[m.currentInstance].lastSegmentNumber = segmentNumber
 	return nil
 }
 
-func (m *Memtable) Delete(key string, segmentNumber uint64) error {
+func (m *Memtable) Delete(key string, timestamp uint64, segmentNumber uint64) error {
 	// Check if the current instance has reached the threshold
 	if m.instances[m.currentInstance].dataStructureInstance.GetNumberOfKeys() >= m.threshold {
 		m.moveToNextInstance()
 	}
-	m.instances[m.currentInstance].dataStructureInstance.Delete(key)
+	m.instances[m.currentInstance].dataStructureInstance.Delete(key, timestamp)
 	m.instances[m.currentInstance].lastSegmentNumber = segmentNumber
 	return nil
 }

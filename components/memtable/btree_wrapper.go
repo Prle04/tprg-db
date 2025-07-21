@@ -22,11 +22,11 @@ func NewBTreeWrapper(config *externalconfiguration.MemtableConfig) (*BTreeWrappe
 func (b *BTreeWrapper) Get(key string) IMemtableItem {
 	return b.btree.Get(key)
 }
-func (b *BTreeWrapper) Set(key string, value []byte) {
-	b.btree.Set(key, value)
+func (b *BTreeWrapper) Set(key string, value []byte, timestamp uint64) {
+	b.btree.Set(key, value, timestamp)
 }
-func (b *BTreeWrapper) Delete(key string) {
-	b.btree.Delete(key)
+func (b *BTreeWrapper) Delete(key string, timestamp uint64) {
+	b.btree.Delete(key, timestamp)
 }
 func (b *BTreeWrapper) Clear() {
 	b.btree.Clear()

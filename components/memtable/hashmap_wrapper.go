@@ -2,7 +2,6 @@ package memtable
 
 import (
 	"sort"
-	"time"
 )
 
 // type MemtableStruct interface {
@@ -31,17 +30,17 @@ func NewHashMapWrapper() *HashMapWrapper {
 	}
 }
 
-func (hm *HashMapWrapper) Set(key string, value []byte) {
+func (hm *HashMapWrapper) Set(key string, value []byte, timestamp uint64) {
 	if el, exists := hm.store[key]; exists {
 		el.isDeleted = false
-		el.timestamp = uint64(time.Now().Unix())
+		el.timestamp = timestamp
 		el.value = value
 	} else {
 		hm.store[key] = &element{
 			key:       key,
 			value:     value,
 			isDeleted: false,
-			timestamp: uint64(time.Now().Unix()),
+			timestamp: timestamp,
 		}
 		hm.size++
 	}
@@ -54,16 +53,16 @@ func (hm *HashMapWrapper) Get(key string) IMemtableItem {
 	return nil
 }
 
-func (hm *HashMapWrapper) Delete(key string) {
+func (hm *HashMapWrapper) Delete(key string, timestamp uint64) {
 	if el, exists := hm.store[key]; exists {
 		el.isDeleted = true
-		el.timestamp = uint64(time.Now().Unix())
+		el.timestamp = timestamp
 	} else {
 		hm.store[key] = &element{
 			key: key,
 			// value:     value,
 			isDeleted: true,
-			timestamp: uint64(time.Now().Unix()),
+			timestamp: timestamp,
 		}
 		hm.size++
 	}

@@ -3,14 +3,15 @@ package btree
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestBTree_Set(t *testing.T) {
 	tree, _ := NewBTree(3)
 
-	tree.Set("key1", []byte("value1"))
-	tree.Set("key2", []byte("value2"))
-	tree.Set("key3", []byte("value3"))
+	tree.Set("key1", []byte("value1"), uint64(time.Now().Unix()))
+	tree.Set("key2", []byte("value2"), uint64(time.Now().Unix()))
+	tree.Set("key3", []byte("value3"), uint64(time.Now().Unix()))
 
 	if tree.isTreeEmpty() {
 		t.Errorf("Tree should not be empty after insertions")
@@ -32,11 +33,11 @@ func TestBTree_Set(t *testing.T) {
 func TestBTree_Delete(t *testing.T) {
 	tree, _ := NewBTree(3)
 
-	tree.Set("key1", []byte("value1"))
-	tree.Set("key2", []byte("value2"))
-	tree.Set("key3", []byte("value3"))
+	tree.Set("key1", []byte("value1"), uint64(time.Now().Unix()))
+	tree.Set("key2", []byte("value2"), uint64(time.Now().Unix()))
+	tree.Set("key3", []byte("value3"), uint64(time.Now().Unix()))
 
-	tree.Delete("key2")
+	tree.Delete("key2", uint64(time.Now().Unix()))
 
 	if el := tree.Get("key2"); !el.IsDeleted() {
 		t.Errorf("Expected to be deleted, got %t", el.IsDeleted())
@@ -46,8 +47,8 @@ func TestBTree_Delete(t *testing.T) {
 func TestBTree_Get(t *testing.T) {
 	tree, _ := NewBTree(3)
 
-	tree.Set("key1", []byte("value1"))
-	tree.Set("key2", []byte("value2"))
+	tree.Set("key1", []byte("value1"), uint64(time.Now().Unix()))
+	tree.Set("key2", []byte("value2"), uint64(time.Now().Unix()))
 	fmt.Println("Set!")
 	if el := tree.Get("key1"); string(el.GetValue()) != "value1" {
 		t.Errorf("Expected value1, got %s", el.GetValue())
@@ -69,10 +70,10 @@ func TestBTree_Get(t *testing.T) {
 func TestBTree_SplitNode(t *testing.T) {
 	tree, _ := NewBTree(3)
 
-	tree.Set("key1", []byte("value1"))
-	tree.Set("key2", []byte("value2"))
-	tree.Set("key3", []byte("value3"))
-	tree.Set("key4", []byte("value4"))
+	tree.Set("key1", []byte("value1"), uint64(time.Now().Unix()))
+	tree.Set("key2", []byte("value2"), uint64(time.Now().Unix()))
+	tree.Set("key3", []byte("value3"), uint64(time.Now().Unix()))
+	tree.Set("key4", []byte("value4"), uint64(time.Now().Unix()))
 
 	if tree.root == nil {
 		t.Errorf("Root should not be nil")

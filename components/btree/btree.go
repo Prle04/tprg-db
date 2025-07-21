@@ -33,7 +33,6 @@ func (tree *BTree) isTreeEmpty() bool {
 	return tree.root == nil
 }
 
-
 func (tree *BTree) splitNode(node *Node) {
 	midIndex := len(node.keys) / 2
 	midElement := node.keys[midIndex]
@@ -205,24 +204,26 @@ func (tree *BTree) printNode(node *Node, level int) {
 	}
 }
 
-func (tree *BTree) Set(key string, value []byte) {
+func (tree *BTree) Set(key string, value []byte, timestamp uint64) {
 	//Kreiramo novi element
 	newElement := &Element{
 		key:       key,
 		value:     value,
 		isDeleted: false,
+		timestamp: timestamp,
 	}
 
 	tree.insertElement(newElement)
 }
 
-func (tree *BTree) Delete(key string) {
+func (tree *BTree) Delete(key string, timestamp uint64) {
 	currentNode, elem := tree.findNode(key)
 
 	if currentNode == nil {
-		tree.insertElement(&Element{key: key, value: nil, isDeleted: true})
+		tree.insertElement(&Element{key: key, value: nil, isDeleted: true, timestamp: timestamp})
 	} else {
 		elem.isDeleted = true
+		elem.timestamp = timestamp
 	}
 }
 
