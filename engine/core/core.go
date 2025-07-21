@@ -76,6 +76,16 @@ func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string)
 		if err != nil {
 			return nil, fmt.Errorf("error deserializing compression manager: %w", err)
 		}
+	} else {
+		compressionPath := path.Join("dbs", dbName, "compression", constants.COMPRESSION_FILENAME)
+		compressionFile := blockManager.OpenBlockedFile(compressionPath)
+		if err := compressionManager.SerializeToFile(compressionFile); err != nil {
+			return nil, fmt.Errorf("error closing CompressionManager: %w", err)
+		}
+		err := compressionFile.Close()
+		if err != nil {
+			return nil, fmt.Errorf("error closing compression file: %w", err)
+		}
 	}
 	// Load existing data from WAL into Memtable
 	for it := range wal.Iterate() {
@@ -291,9 +301,7 @@ func (c *Core) flush(compressedKey uint64) error {
 		}
 		c.wal.DeleteUntil(lastSegment)
 	}
-	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
-	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
-	c.compressionManager.SerializeToFile(compressionFile)
+	c.saveCompression()
 	return nil
 }
 
@@ -327,10 +335,18 @@ func (c *Core) Shutdown() error {
 	if err := c.lsm.Save(); err != nil {
 		return fmt.Errorf("error closing LSM: %w", err)
 	}
+
+	if err := c.saveCompression(); err != nil {
+		return fmt.Errorf("error saving CompressionManager: %w", err)
+	}
+	return nil
+}
+
+func (c *Core) saveCompression() error {
 	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
 	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
 	if err := c.compressionManager.SerializeToFile(compressionFile); err != nil {
 		return fmt.Errorf("error closing CompressionManager: %w", err)
 	}
-	return nil
+	return compressionFile.Close()
 }

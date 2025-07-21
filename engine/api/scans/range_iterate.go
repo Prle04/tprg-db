@@ -1,4 +1,4 @@
-package scanc
+package scans
 
 import (
 	"errors"

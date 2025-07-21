@@ -7,7 +7,7 @@ import (
 	"path"
 	"time"
 	"tprgdb/engine/api/probabilistic"
-	"tprgdb/engine/api/scanc"
+	"tprgdb/engine/api/scans"
 	"tprgdb/engine/api/tokenbucket"
 	"tprgdb/engine/api/user"
 	"tprgdb/engine/constants"
@@ -211,17 +211,18 @@ func (engine *KVEngine) GetMany(keys []string) ([]*itemPackage.DBItem, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("keys cannot be empty")
 	}
+	prefixedKeys := make([]string, len(keys))
 	for i, key := range keys {
 		if key == "" {
 			return nil, fmt.Errorf("key at index %d cannot be empty", i)
 		}
-		keys[i] = constants.DATA_PREFIX + key // Prefix each key with constants.DATA_PREFIX
+		prefixedKeys[i] = constants.DATA_PREFIX + key // Prefix each key with constants.DATA_PREFIX
 	}
 	if err := engine.tokenBucket.Validate(engine.user.Username); err != nil {
 		return nil, err
 	}
 
-	items, err := engine.core.GetMany(keys)
+	items, err := engine.core.GetMany(prefixedKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +250,7 @@ func (engine *KVEngine) GetUsername() string {
 	return engine.user.Username
 }
 
-func (engine *KVEngine) RangeScan(start, end string, pageSize int) (scanc.ICursor, error) {
+func (engine *KVEngine) RangeScan(start, end string, pageSize int) (scans.ICursor, error) {
 	if start == "" || end == "" {
 		return nil, errors.New("start and end keys cannot be empty")
 	}
@@ -263,10 +264,10 @@ func (engine *KVEngine) RangeScan(start, end string, pageSize int) (scanc.ICurso
 		return nil, err
 	}
 
-	return scanc.NewRangeScanCursor(engine.core, start, end, pageSize), nil
+	return scans.NewRangeScanCursor(engine.core, start, end, pageSize), nil
 }
 
-func (engine *KVEngine) PrefixScan(prefix string, pageSize int) (scanc.ICursor, error) {
+func (engine *KVEngine) PrefixScan(prefix string, pageSize int) (scans.ICursor, error) {
 	if prefix == "" {
 		return nil, errors.New("prefix cannot be empty")
 	}
@@ -277,10 +278,10 @@ func (engine *KVEngine) PrefixScan(prefix string, pageSize int) (scanc.ICursor, 
 		return nil, err
 	}
 
-	return scanc.NewPrefixScanCursor(engine.core, prefix, pageSize), nil
+	return scans.NewPrefixScanCursor(engine.core, prefix, pageSize), nil
 }
 
-func (engine *KVEngine) RangeIterate(start, end string) (scanc.IIterator, error) {
+func (engine *KVEngine) RangeIterate(start, end string) (scans.IIterator, error) {
 	if start == "" || end == "" {
 		return nil, errors.New("start and end keys cannot be empty")
 	}
@@ -291,10 +292,10 @@ func (engine *KVEngine) RangeIterate(start, end string) (scanc.IIterator, error)
 		return nil, err
 	}
 
-	return scanc.NewRangeIterator(engine.core, start, end), nil
+	return scans.NewRangeIterator(engine.core, start, end), nil
 }
 
-func (engine *KVEngine) PrefixIterate(prefix string) (scanc.IIterator, error) {
+func (engine *KVEngine) PrefixIterate(prefix string) (scans.IIterator, error) {
 	if prefix == "" {
 		return nil, errors.New("prefix cannot be empty")
 	}
@@ -302,7 +303,7 @@ func (engine *KVEngine) PrefixIterate(prefix string) (scanc.IIterator, error) {
 		return nil, err
 	}
 
-	return scanc.NewPrefixIterator(engine.core, prefix), nil
+	return scans.NewPrefixIterator(engine.core, prefix), nil
 }
 
 func (engine *KVEngine) Validate(tableName string) (bool, error) {

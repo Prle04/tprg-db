@@ -115,10 +115,14 @@ func (m *BlockManager) closeFile(filepath string) error {
 		return syncErr
 	}
 	iterator := m.cache.GetIterator()
+	blockFiles := make([]string, 0)
 	for blockpath, block, ok := iterator.Next(); ok; blockpath, block, ok = iterator.Next() {
 		if block.filename == filepath {
-			m.removeBlock(blockpath)
+			blockFiles = append(blockFiles, blockpath)
 		}
+	}
+	for _, blockpath := range blockFiles {
+		m.removeBlock(blockpath)
 	}
 	return nil
 }
