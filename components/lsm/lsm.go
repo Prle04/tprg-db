@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
 	"path"
 	"tprgdb/components/blockmanager"
 	"tprgdb/components/sstable"
@@ -166,6 +167,9 @@ func (lsm *LSM) Save() error {
 
 func (lsm *LSM) Load() error {
 	filepath := path.Join(lsm.folderPath, FILE_NAME)
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		return nil // If the file does not exist, we can skip loading
+	}
 	file := lsm.blockManager.OpenBlockedFile(filepath)
 
 	_, levels, err := file.ReadUVariable()

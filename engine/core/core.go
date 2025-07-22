@@ -62,13 +62,18 @@ func NewCore(config *externalconfiguration.ExternalConfiguration, dbName string)
 	}
 	lsm := lsm.NewLSM(config.LSM.MaxLevels, config.LSM.FolderPath, config.LSM.Algorithm, blockManager, sstableManager, compressionManager, filesPerLevel, multiplier)
 
+	err = lsm.Load()
+	if err != nil {
+		return nil, err
+	}
+
 	memtable, err := memtable.NewMemtable(config.Memtable.NumberOfInstances, config.Memtable.Threshld, CreateInstance(&config.Memtable))
 	if err != nil {
 		return nil, err
 	}
 
 	// Load the compression manager from the file if it exists
-	compressionPath := path.Join("dbs", dbName, "compression", constants.COMPRESSION_FILENAME)
+	compressionPath := path.Join("dbs", dbName, "data", "compression", constants.COMPRESSION_FILENAME)
 	if _, err := os.Stat(compressionPath); !os.IsNotExist(err) {
 		// If the file  exist, we can load it
 		compressionFile := blockManager.OpenBlockedFile(compressionPath)
@@ -177,11 +182,12 @@ func (c *Core) Set(key string, value []byte) error {
 
 	compressedKey := c.compressionManager.Add(key)
 
+	walSegment := c.wal.GetCurrentSegmentNumber()
 	if err := c.wal.Add(key, value); err != nil {
 		return err
 	}
 	c.wal.Sync()
-	if err := c.memtable.Set(key, value, uint64(time.Now().Unix()), c.wal.GetCurrentSegmentNumber()); err != nil {
+	if err := c.memtable.Set(key, value, uint64(time.Now().Unix()), walSegment); err != nil {
 		return err
 	}
 
@@ -196,11 +202,13 @@ func (c *Core) Set(key string, value []byte) error {
 func (c *Core) Delete(key string) error {
 
 	compressedKey := c.compressionManager.Add(key)
+
+	walSegment := c.wal.GetCurrentSegmentNumber()
 	if err := c.wal.Delete(key); err != nil {
 		return err
 	}
 	c.wal.Sync()
-	if err := c.memtable.Delete(key, uint64(time.Now().Unix()), c.wal.GetCurrentSegmentNumber()); err != nil {
+	if err := c.memtable.Delete(key, uint64(time.Now().Unix()), walSegment); err != nil {
 		return err
 	}
 
@@ -364,7 +372,7 @@ func (c *Core) Shutdown() error {
 }
 
 func (c *Core) saveCompression() error {
-	compressionPath := path.Join("dbs", c.dbName, "compression", constants.COMPRESSION_FILENAME)
+	compressionPath := path.Join("dbs", c.dbName, "data", "compression", constants.COMPRESSION_FILENAME)
 	compressionFile := c.blockManager.OpenBlockedFile(compressionPath)
 	if err := c.compressionManager.SerializeToFile(compressionFile); err != nil {
 		return fmt.Errorf("error closing CompressionManager: %w", err)

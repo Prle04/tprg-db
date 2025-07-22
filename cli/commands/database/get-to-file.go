@@ -21,6 +21,11 @@ func (c *GetToFileCommand) Execute() (commands.IContext, error) {
 		return c.caller, err
 	}
 
+	if value == nil {
+		fmt.Printf("'%s' does not exist\n", c.key)
+		return c.caller, nil
+	}
+
 	// Write the value to the specified file
 	file, err := os.OpenFile(c.FilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
