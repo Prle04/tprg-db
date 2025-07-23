@@ -320,5 +320,5 @@ func (engine *KVEngine) Shutdown() error {
 }
 
 func (engine *KVEngine) SetUser(newUser *user.User) error {
-	return engine.core.Set(constants.USER_PREFIX+engine.user.Username, newUser.SerializeToBytes())
+	return engine.core.Set(constants.USER_PREFIX+newUser.Username, newUser.SerializeToBytes())
 }
