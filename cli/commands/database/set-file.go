@@ -17,6 +17,9 @@ type SetFileCommand struct {
 func (cmd *SetFileCommand) Execute() (commands.IContext, error) {
 	value, err := os.ReadFile(cmd.fileName)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return cmd.caller, fmt.Errorf("file '%s' does not exist", cmd.fileName)
+		}
 		return cmd.caller, err
 	}
 	err = cmd.dbEngine.Set(cmd.key, value)
