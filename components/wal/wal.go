@@ -46,10 +46,10 @@ func NewWriteAheadLog(
 			continue
 		}
 		// skip files that are not wal files in the format wal_%0nd.wal
-		if filepath.Ext(v.Name()) != ".wal" && !strings.HasPrefix(v.Name(), "wal_") {
+		if path.Ext(v.Name()) != ".wal" && !strings.HasPrefix(v.Name(), "wal_") {
 			continue
 		}
-		filepaths = append(filepaths, filepath.Join(walPath, v.Name()))
+		filepaths = append(filepaths, path.Join(walPath, v.Name()))
 	}
 
 	// sort the filepaths in ascending order
