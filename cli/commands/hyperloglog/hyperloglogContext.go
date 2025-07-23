@@ -55,7 +55,7 @@ func (ctx *HyperLogLogContext) GetOwner() commands.IContext {
 }
 
 func (ctx *HyperLogLogContext) GetPrompt() string {
-	return fmt.Sprintf("%s@%s (CMS)> ", ctx.dbEngine.GetUsername(), ctx.dbEngine.GetDBName())
+	return fmt.Sprintf("%s@%s (HLL)> ", ctx.dbEngine.GetUsername(), ctx.dbEngine.GetDBName())
 }
 
 func (ctx *HyperLogLogContext) Close() error {

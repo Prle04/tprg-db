@@ -60,7 +60,7 @@ func (ctx *SimHashContext) GetOwner() commands.IContext {
 }
 
 func (ctx *SimHashContext) GetPrompt() string {
-	return fmt.Sprintf("%s@%s (BF)> ", ctx.dbEngine.GetUsername(), ctx.dbEngine.GetDBName())
+	return fmt.Sprintf("%s@%s (SH)> ", ctx.dbEngine.GetUsername(), ctx.dbEngine.GetDBName())
 }
 
 func (ctx *SimHashContext) Close() error {
