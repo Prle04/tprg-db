@@ -161,3 +161,7 @@ func (h *HashMapDecompression) DeserializeFromFile(file *blockmanager.BlockedFil
 	}
 	return nil
 }
+
+func (h *HashMapDecompression) Add(compressed uint64, decompressed string) {
+	h.data[compressed] = decompressed
+}

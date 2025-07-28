@@ -12,6 +12,7 @@ type ICompressionStruct interface {
 
 type IDecompressionStruct interface {
 	Find(uint64) (string, error)
+	Add(uint64, string)
 }
 
 type ISerializableCompression interface {
@@ -82,5 +83,7 @@ func (cm *CompressionManager) DeserializeFromBytes(data []byte) {
 }
 
 func (cm *CompressionManager) Add(key string) uint64 {
-	return cm.compressionStruct.Add(key)
+	compressedKey := cm.compressionStruct.Add(key)
+	cm.decompressionStruct.Add(compressedKey, key)
+	return compressedKey
 }
