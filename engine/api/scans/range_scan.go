@@ -47,11 +47,31 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 	// If we have cached the range for this page number, use it
 	if r, exists := c.cache.GetElement(fmt.Sprintf("%d", pageNumber)); exists {
 		// We have the upper and lower bounds cached
-		candidateKeys, err := c.core.GetKeysRange(r.LowerBound, r.UpperBound, 1, c.pageSize)
-		if err != nil {
-			return nil, fmt.Errorf("error getting keys range: %w", err)
+		keys := make([]string, 0, c.pageSize)
+		lowerBound := r.LowerBound
+		firstIteration := true
+		for len(keys) == 0 || keys[len(keys)-1] != r.UpperBound {
+			candidateKeys, err := c.core.GetKeysRange(lowerBound, r.UpperBound, 1, c.pageSize+1)
+			if err != nil {
+				return nil, fmt.Errorf("error getting keys range: %w", err)
+			}
+			if len(candidateKeys) == 0 {
+				break // No more keys in the range
+			}
+			if !firstIteration {
+				candidateKeys = candidateKeys[1:] // Skip the first key if not the first iteration
+			}
+			if len(candidateKeys) == 0 {
+				break // No more keys to process
+			}
+			firstIteration = false
+			lowerBound = candidateKeys[len(candidateKeys)-1] // In next iteration start from the last key
+			keys = append(keys, candidateKeys...)
+			if len(keys) > 0 && keys[len(keys)-1] == r.UpperBound {
+				break // We have reached the upper bound
+			}
 		}
-		items, err := c.core.GetMany(candidateKeys)
+		items, err := c.core.GetMany(keys)
 		if err != nil {
 			return nil, fmt.Errorf("error getting items: %w", err)
 		}
@@ -81,7 +101,7 @@ func (c *RangeScanCursor) GetPage(pageNumber int) ([]*itemPackage.DBItem, error)
 
 	for len(c.currentItems) < c.pageSize {
 
-		candidateKeys, err := c.core.GetKeysRange(lowerBound, upperBound, 1, c.pageSize)
+		candidateKeys, err := c.core.GetKeysRange(lowerBound, upperBound, 1, c.pageSize+1)
 		if err != nil {
 			return nil, fmt.Errorf("error getting keys range: %w", err)
 		}

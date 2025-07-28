@@ -235,13 +235,15 @@ func (s *SSTableReader) GetMany(keys []string) ([]*SSItem, error) {
 	}
 	i := 0
 	var currentIndexItem *SSTableIndexItem
+	shouldSeek := true
 	for i < len(indecies) {
 		// We are looking for a indecies[i]
 
 		// If the previous item had the same index offset, we don't need to reset to
 		// the same index offset and loop though the same items again
-		if (i == 0 && currentIndexItem == nil) || (i > 0 && indecies[i].indexOffset != indecies[i-1].indexOffset) {
+		if shouldSeek {
 			indexFile.Seek(indecies[i].indexOffset + indexStartingOffset)
+			shouldSeek = false // Reset the flag
 		}
 		currentIndexItem = &SSTableIndexItem{IsCompressionEnabled: header.IsCompressionEnabled}
 		err = currentIndexItem.DeserializeFromFile(indexFile)
@@ -264,11 +266,13 @@ func (s *SSTableReader) GetMany(keys []string) ([]*SSItem, error) {
 			indecies[i].dataOffset = new(uint64)                                  // Allocate memory for the data offset
 			*indecies[i].dataOffset = currentIndexItem.Offset + SSTableHeaderSize // Offset in the data file
 			i++                                                                   // Move to the next key
+			shouldSeek = i < len(indecies) && indecies[i].indexOffset != indecies[i-1].indexOffset
 			continue
 		}
 		if currentIndexItem.Key > indecies[i].key {
 			// Key not found in the index, move to the next key
 			i++
+			shouldSeek = i < len(indecies) && indecies[i].indexOffset != indecies[i-1].indexOffset
 			continue
 		}
 	}
