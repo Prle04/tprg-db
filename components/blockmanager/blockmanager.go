@@ -1,0 +1,226 @@
+package blockmanager
+
+import (
+	"os"
+	osPath "path"
+	"strconv"
+	"strings"
+	"tprgdb/components/lrucache"
+)
+
+type BlockManager struct {
+	blockSize uint64
+	maxSize   uint64
+	cache     *lrucache.LRUCache[*Block]
+}
+
+func NewBlockManager(blockSize uint64, maxSize uint64) *BlockManager {
+	return &BlockManager{
+		blockSize: blockSize,
+		maxSize:   maxSize,
+		cache:     lrucache.NewLRUCache[*Block](maxSize),
+	}
+}
+
+func (m *BlockManager) OpenBlockedFile(path string) *BlockedFile {
+	return &BlockedFile{
+		manager:   m,
+		path:      path,
+		position:  0,
+		blockSize: m.blockSize,
+	}
+}
+
+func (m *BlockManager) getBlock(path string) (*Block, error) {
+	// Block is already in the cache
+	if block, ok := m.cache.GetElement(path); ok {
+		return block, nil
+	}
+	// Block is not cached so we load it from the file
+	return m.load(path)
+}
+
+func (m *BlockManager) addBlock(block *Block) error {
+
+	evicted, evictedPath := m.cache.AddElement(block.GetPath(), block)
+	if evicted {
+		err := m.syncBlock(evictedPath)
+		if err != nil {
+			return err
+		}
+		m.removeBlock(evictedPath)
+	}
+	return nil
+}
+
+func (m *BlockManager) removeBlock(path string) {
+	m.cache.RemoveElement(path)
+}
+
+func (m *BlockManager) syncBlock(path string) error {
+	block, ok := m.cache.GetElement(path)
+	if !ok {
+		return nil
+	}
+
+	if !block.IsModified() {
+		return nil
+	}
+	file, err := os.OpenFile(block.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Seek(int64(m.blockSize*block.orderNumber), 0)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(block.data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *BlockManager) syncFile(filename string) error {
+	blocks := make([]*Block, 0)
+
+	iterator := m.cache.GetIterator()
+	for _, block, ok := iterator.Next(); ok; _, block, ok = iterator.Next() {
+		if block.filename == filename {
+			blocks = append(blocks, block)
+		}
+	}
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	for _, block := range blocks {
+		_, err = file.Seek(int64(m.blockSize*block.orderNumber), 0)
+		if err != nil {
+			return err
+		}
+		_, err = file.Write(block.data)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *BlockManager) closeFile(filepath string) error {
+	syncErr := m.syncFile(filepath)
+	if syncErr != nil {
+		return syncErr
+	}
+	iterator := m.cache.GetIterator()
+	blockFiles := make([]string, 0)
+	for blockpath, block, ok := iterator.Next(); ok; blockpath, block, ok = iterator.Next() {
+		if block.filename == filepath {
+			blockFiles = append(blockFiles, blockpath)
+		}
+	}
+	for _, blockpath := range blockFiles {
+		m.removeBlock(blockpath)
+	}
+	return nil
+}
+
+func (m *BlockManager) deleteFile(filepath string) error {
+	iterator := m.cache.GetIterator()
+	fileNames := make([]string, 0)
+	for _, block, ok := iterator.Next(); ok; _, block, ok = iterator.Next() {
+		if block.filename == filepath {
+			fileNames = append(fileNames, block.GetPath())
+		}
+	}
+	for _, blockpath := range fileNames {
+		m.removeBlock(blockpath)
+	}
+	return os.Remove(filepath)
+}
+
+func (m *BlockManager) load(path string) (*Block, error) {
+	// Parse the path to get the file path and order number
+	var filepath string = getBlockFilename(path)
+	orderNumber, err := getBlockOrderNumber(path)
+	if err != nil {
+		return nil, err
+	}
+	// get only the folder path to the file
+	folders := osPath.Dir(filepath)
+	if err := os.MkdirAll(folders, 0755); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	// Check if the block is in the file
+	if fileInfo.Size() <= int64(m.blockSize*orderNumber) {
+		// The block is not in the file, so we create a new block
+		block := NewBlock(m.blockSize, filepath)
+		block.SetOrderNumber(orderNumber)
+		err = m.addBlock(block)
+		return block, err
+	}
+	// Create a new block and read the data from the file
+	block := NewBlock(m.blockSize, filepath)
+	block.SetOrderNumber(orderNumber)
+	_, err = file.Seek(int64(m.blockSize*orderNumber), 0)
+	if err != nil {
+		return nil, err
+	}
+	_, err = file.Read(block.data)
+	if err != nil {
+		return nil, err
+	}
+	// Add the block to the cache
+	err = m.addBlock(block)
+	if err != nil {
+		return nil, err
+	}
+	return block, nil
+}
+
+func (m *BlockManager) GetBlockSize() uint64 {
+	return m.blockSize
+}
+
+func getBlockPath(filename string, orderNumber uint64) string {
+	return filename + "+" + strconv.FormatUint(orderNumber, 10)
+}
+
+func getBlockOrderNumber(path string) (uint64, error) {
+	split := strings.Split(path, "+")
+	if len(split) != 2 {
+		return 0, &InvalidBlockPath{}
+	}
+	orderNumber, err := strconv.ParseUint(split[len(split)-1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return orderNumber, nil
+}
+
+func getBlockFilename(path string) string {
+	split := strings.Split(path, "+")
+	return strings.Join(split[:len(split)-1], "+")
+}
+
+func (m *BlockManager) Close() error {
+	var resErr error = nil
+	iter := m.cache.GetIterator()
+	for _, block, ok := iter.Next(); ok; _, block, ok = iter.Next() {
+		if err := m.syncBlock(block.GetPath()); err != nil {
+			resErr = err
+		}
+	}
+	return resErr
+}
